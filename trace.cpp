@@ -1,7 +1,7 @@
 #include "trace.h"
 #include <iostream>
 #include <stdarg.h>
-
+#include <stdio.h>
 
 #ifdef _DEBUG
 bool _trace(char *format, ...)

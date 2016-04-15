@@ -1,0 +1,18 @@
+/*
+ * iptables.h
+ *
+ *  Created on: Feb 20, 2015
+ *      Author: root
+ */
+
+#ifndef IPTABLES_H_
+#define IPTABLES_H_
+#define IP4_FORWARD_SWITCH_FILE "/proc/sys/net/ipv4/ip_forward"
+
+
+
+bool iptables_commands(const char * p_sCmd);
+bool GetIpforward();
+void EnableIpforward(bool p_bTrue);
+void FileWrite(std::string sFilename,std::string sData);
+#endif /* IPTABLES_H_ */

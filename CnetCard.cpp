@@ -130,7 +130,7 @@ void CnetCard::initNetCard() {
 	//pthread_mutex_init(&this->m_lock, NULL);
 	//pthread_mutex_init(&this->m_lockIO, NULL);
 
-	memset(&m_ConnectTest, 0, sizeof(m_ConnectTest));
+//	memset(&m_ConnectTest, 0, sizeof(m_ConnectTest));
 	m_nDefaultGateWayIP = 0;
 	m_nLastLibNetWriteTime = 0;
 	m_nLastDisCoverNetworkTime = 0;
@@ -140,8 +140,8 @@ void CnetCard::initNetCard() {
 	m_nLastBeenAttackTime = 0;
 	m_nTakeIP = 0;
 	m_bProtection = true;
-	m_nCutoffMethod = NETCUTTYPE_CUTOFFMETHOD_BOTH
-	;
+	m_nCutoffMethod = NETCUTTYPE_CUTOFFMETHOD_BOTH;
+	m_nAllSpeedLimit=NETCUT_SPEEDLIMIT_UNLIMIT;
 	m_bConnectMe = false;
 	this->m_bUp = false;
 	m_bRunAsRoot = true;
@@ -220,6 +220,23 @@ string CnetCard::GetMyMac() {
 	return s;
 
 }
+
+bool CnetCard::GetMyMac(char * p_sBuf){
+
+
+	getMac((unsigned char *) p_sBuf);
+
+	return true;
+}
+
+bool CnetCard::GetMacofDstIP(const DWORD & p_nIP, char * p_sBuf)
+{
+
+
+			return getMacforIP(p_nIP,(unsigned char *) p_sBuf);
+
+}
+
 
 string CnetCard::GetMyGateMac() {
 
@@ -456,7 +473,7 @@ void CnetCard::setDevName(const string &p_sName, const u_char * p_macBuf) {
 	this->m_sHostname = acHostname;
 
 	this->AddMac2Name(m_MACADD, this->m_sHostname);
-
+/*
 	hostent * record = gethostbyname(CONNECTIONTESTHOSTNAME);
 	if (record != NULL) {
 		in_addr * address = (in_addr *) record->h_addr;
@@ -465,6 +482,9 @@ void CnetCard::setDevName(const string &p_sName, const u_char * p_macBuf) {
 	}
 	else
 	m_ConnectTest.nNextAction=this->TEST_ACTION::NOMORETEST;
+
+	*/
+
 
 	m_lock.unlock();
 
@@ -484,7 +504,7 @@ CnetCard::~CnetCard() {
 //	TRACE("on off worker dones\n");
 	m_InfoworkerThread.WaitThreadExit();
 //	TRACE("info done\n");
-	m_GroundThread.WaitThreadExit();
+	m_RoutingThread.WaitThreadExit();
 //	TRACE("Ground done\n");
 	m_MakeSureMeLiveThread.WaitThreadExit();
 //	TRACE("Live done\n");
@@ -583,12 +603,7 @@ DWORD CnetCard::GetMyIP() {
 	DWORD nIP = 0;
 	m_lock.lock();
 
-	for (std::map<DWORD, Address>::iterator it = m_IPs.begin();
-			it != m_IPs.end(); ++it) {
-		Address& s = (*it).second;
-		nIP = s.Ip;
-		break;
-	}
+	nIP=this->m_nMyIP;
 
 	m_lock.unlock();
 
@@ -597,15 +612,10 @@ DWORD CnetCard::GetMyIP() {
 
 DWORD CnetCard::GetMyMask() {
 
-	DWORD nIP;
+	DWORD nIP=0;
 	m_lock.lock();
 
-	for (std::map<DWORD, Address>::iterator it = m_IPs.begin();
-			it != m_IPs.end(); ++it) {
-		Address& s = (*it).second;
-		nIP = s.Mask;
-		break;
-	}
+	nIP=m_nMask;
 
 	m_lock.unlock();
 
@@ -661,7 +671,7 @@ void CnetCard::Off2On() {
 		m_ArpCacheReaderThread.StartThread(threadArpCacheReader, this);
 		m_InfoworkerThread.StartThread(threadComputerInfoWorker, this);
 
-		m_GroundThread.StartThread(threadGroundedWorker, this);
+		m_RoutingThread.StartThread(threadRoutingWorker, this);
 
 	}
 
@@ -908,6 +918,34 @@ void CnetCard::GetIPsofMac(u_char *p_sBuf, std::map<DWORD, bool> &p_Ips) {
 	m_lock.unlock();
 }
 
+void CnetCard::SetAllComputerSpeed(int p_nLimit)
+{
+
+
+	m_lock.lock();
+
+	if(p_nLimit>NETCUT_SPEEDLIMIT_UNLIMIT)p_nLimit=NETCUT_SPEEDLIMIT_UNLIMIT;
+	if(p_nLimit<NETCUT_SPEEDLIMIT_CUTOFF)p_nLimit=NETCUT_SPEEDLIMIT_CUTOFF;
+
+	m_nAllSpeedLimit=p_nLimit;
+
+	MessageINT_Value(IPCMESSAGE_ID_INT_SPEEDLIMIT_ALL, m_nAllSpeedLimit);
+
+	std::map<MACADDR, CComputer>::iterator it;
+		for (it = m_computers.begin(); it != m_computers.end(); ++it) {
+			CComputer &computer = (*it).second;
+            //MACADDR &mac=(*it).first;
+			if(computer.IsGateway()||computer.IsMyself()||computer.IsNetCutDefender())
+				continue;
+
+			this->SetComputerSpeed(computer.GetMacArray().data(),m_nAllSpeedLimit);
+		}
+
+	m_lock.unlock();
+
+
+
+}
 void CnetCard::SetComputerSpeed(u_char * p_sMacBuf, int p_nLimit) {
 
 	MACADDR mac = CAddressHelper::MacBuffer2Array(p_sMacBuf);
@@ -919,9 +957,22 @@ void CnetCard::SetComputerSpeed(u_char * p_sMacBuf, int p_nLimit) {
 		if (m_computers.count(mac)) {
 			m_computers[mac].SetSpeedLimit(p_nLimit);
 
+			map<DWORD, bool> ips;
+			m_computers[mac].GetIPs(ips);
+
+					for (std::map<DWORD, bool>::iterator it = ips.begin(); it != ips.end();
+							++it) {
+						DWORD ip = (*it).first;
+						//		SetDrop(ip);
+						this->SetIPSpeed(ip,p_nLimit);
+					}
+
+
 			this->MakeSureOffOn(m_computers[mac]);
 
-			//OnComputerUpdate(m_computers[mac]);
+		//	this->OnComputerUpdate(m_computers[mac],IPCMESSAGE_ID_MAC_INT_SETSPEED,m_computers[mac].GetSpeedLimit());
+
+			this->OnComputerUpdate(m_computers[mac]);
 		}
 
 	} while (false);
@@ -989,7 +1040,24 @@ void CnetCard::SetComputerOnOff(const netcardClientEvent * p_nEvent) {
 
 	SaveBlackList();
 }
+void CnetCard::OnClientSearchRequest(std::string p_sSearchName)
+{
 
+	DWORD nIP=0;
+	if(!CAddressHelper::isStringIP(p_sSearchName,nIP)) return;
+
+	DiscoverTask d;
+				d.bSingleIP = true;
+				d.bNoIPQuery = false;
+				d.MAC = CAddressHelper::GetBrocastMac();
+				d.nIP = nIP;
+
+				m_lock.lock();
+				m_DiscoverFinnalArray.AddTail(d);
+				this->SendDiscover();
+
+				m_lock.unlock();
+}
 void CnetCard::DiscoverNetwork() {
 
 	m_lock.lock();
@@ -1160,6 +1228,26 @@ void CnetCard::SendDiscover() {
 
 }
 
+void CnetCard::AddComputer2Query(const CComputer &p_Computer) {
+
+	m_lock.lock();
+
+	std::map<DWORD, bool> ips;
+	p_Computer.GetIPs(ips);
+
+	map<DWORD, bool>::iterator ipit;
+
+	for (ipit = ips.begin(); ipit != ips.end(); ++ipit) {
+
+		DWORD ip = (*ipit).first;
+		this->ArpQueryIP(ip, p_Computer.GetMac());
+
+	}
+
+	m_lock.unlock();
+
+}
+
 void CnetCard::AddIP2Query(const CPacketBase & p_Packet) {
 
 	m_lock.lock();
@@ -1179,6 +1267,9 @@ void CnetCard::AddIP2Query(const CPacketBase & p_Packet) {
 		}
 
 		if (this->IsKnownNode(d.MAC, d.nIP))
+			break;
+
+		if(this->IsMyMac(d.MAC))
 			break;
 
 		m_DiscoverFinnalArray.AddTail(d);
@@ -1214,8 +1305,10 @@ void CnetCard::ShowALLComputers() {
 	 }
 	 */
 
-	this->UpdateClients(NETCARDEVENT_DEFENDERINFO, m_bProtection);
+	this->UpdateClients(IPCMESSAGE_ID_INT_SETDEFENDER, m_bProtection);
+	//this->UpdateClients(IPCMESSAGE_ID_INT_SETDEFENDER, m_bProtection);
 	ShowCutMethod();
+	MessageINT_Value(IPCMESSAGE_ID_INT_SPEEDLIMIT_ALL, m_nAllSpeedLimit);
 	MessageINT_Value(IPCMESSAGE_ID_INT_SLOWSCAN, (int) m_bSlowScan);
 	MessageINT_Value(IPCMESSAGE_ID_INT_FAKEMAC, (int) m_bFakeMac);
 
@@ -1274,8 +1367,16 @@ void CnetCard::DetectNetcutDefender(const CPacketBase & packet) {
 
 		if (compareIP == packet.m_nARPDstIP
 				&& this->m_computers.count(packet.m_EtherSrc)) {
+
+
+			bool bNeedUpdate2Client=false;
+			if(!m_computers[packet.m_EtherSrc].IsNetCutDefender())
+			{
+				bNeedUpdate2Client=true;
+			}
 			m_computers[packet.m_EtherSrc].FlagAsNetCutDefender();
-			this->OnComputerUpdate(m_computers[packet.m_EtherSrc]);
+			if(bNeedUpdate2Client)
+				this->OnComputerUpdate(m_computers[packet.m_EtherSrc]);
 		}
 
 	}
@@ -1297,9 +1398,9 @@ void CnetCard::DefenderProcess(const CPacketBase & packet) {
 
 		if (this->IsMyIP(packet.m_nARPDstIP)
 				&& this->IsMyGateIP(packet.m_nARPSrcIP)
-				&& !this->IsGateWayMac(packet.m_ARPSrcMac)) {
+				&& !this->IsGateWayMac(packet.m_ARPSrcMac)&&!this->IsMyMac(packet.m_ARPSrcMac)) {
 
-			//TRACE("Someone attack me %s\n");
+			TRACE("Someone attack me %s %s\n",CAddressHelper::IntIP2str(packet.m_nARPSrcIP).c_str(),CAddressHelper::BufferMac2str(packet.m_ARPSrcMac.data()).c_str());
 			if (this->m_computers.count(packet.m_EtherSrc)) {
 				m_computers[packet.m_EtherSrc].FlagAsAttacker();
 				//	SetComputerOnOff(m_computers[packet.m_EtherSrc], true);
@@ -1499,7 +1600,7 @@ void CnetCard::OnNetBiosPacket(const CPacketBase & packet) {
 		return;  // not a response packet
 
 	if (this->GetIPTransID(ip->ip_src.s_addr) != ntohs(pak->tranid)) {
-		//	TRACE("Wrong trans ID\n");
+//		TRACE("Wrong trans ID\n");
 		return;
 	}
 
@@ -1522,6 +1623,7 @@ void CnetCard::OnNetBiosPacket(const CPacketBase & packet) {
 
 		}
 
+	//	TRACE("Get name %s for Ip %s\n",computername,CAddressHelper::IntIP2str(ip->ip_src.s_addr).c_str());
 	}
 
 	//		TRACE("responsed from IP %s ID %ud and %ud",CAddressHelper::IntIP2str(rsp.remote.sin_addr.s_addr).c_str(),pak.tranid,ntohs(pak.tranid));
@@ -1602,11 +1704,13 @@ void CnetCard::OnDHCPPacket(const CPacketBase & packet) {
 
 }
 void CnetCard::OnArpPacket(const CPacketBase & packet) {
+
 	NewComputerProcess(packet);
 	MakesureOffOnProcess(packet);
-	ProcessTakeIP(packet);
+	//ProcessTakeIP(packet);
 	DefenderProcess(packet);
 	DetectNetcutDefender(packet);
+	ProcessComputerOnline(packet);
 
 }
 /*
@@ -1670,7 +1774,7 @@ void CnetCard::OnArpPacket(const CPacketBase & packet) {
  }
  */
 void CnetCard::OnTCPPacket(const CPacketBase & packet) {
-
+	/*
 	this->m_lock.lock();
 
 	do {
@@ -1701,33 +1805,42 @@ void CnetCard::OnTCPPacket(const CPacketBase & packet) {
 	} while (false);
 
 	this->m_lock.unlock();
+*/
+
+}
+
+void CnetCard::ProcessComputerOnline(const CPacketBase & packet) {
+
+	if (!this->IsKnownNode(packet)) {
+		return;  // I have this node already
+	}
+	m_lock.lock();
+
+	if (this->m_computers.count(packet.m_EtherSrc))
+	{
+		if(m_computers[packet.m_EtherSrc].OnPacket())
+			this->OnComputerUpdate(m_computers[packet.m_EtherSrc],IPCMESSAGE_ID_MAC_INT_OFFLINE,0);//becamse online
+	}
+	m_lock.unlock();
 
 }
 void CnetCard::OnIPPacket(const CPacketBase & packet) {
 
+	ProcessComputerOnline(packet);
 	if (packet.m_nIPSrc == 0)
 		return;  // this guy has no IP yet
-	/*
-	 if (!this->IsMyIP(packet.m_nIPDst)
-	 && memcmp(CAddressHelper::m_macBrocast,
-	 packet.m_pEthernet->ether_dhost, 6) != 0
-	 && !CAddressHelper::isBrocastIP(packet.m_nIPDst))
-	 return; // not target to me , not brocast mac, not brocast ip reture
-	 */
-	//	TRACE(" IP %s",CAddressHelper::IntIP2str(packet.m_nIPSrc).c_str());
-	if (this->IsKnownNode(packet))
-		return;  // I have this node already
 
-	if (this->IsGateWayMac(packet.m_EtherSrc) && !IsMyNetwork(packet.m_nIPSrc))
+	if (this->IsKnownNode(packet)) {
+		return;  // I have this node already
+	}
+
+	if (this->IsGateWayMac(packet.m_EtherSrc) && !IsMyNetwork(packet.m_nIPSrc)) //Gateway routing packet, no need query
 		return;
 
 //	TRACE("Because of IP Start query %s",CAddressHelper::IntIP2str(packet.m_nIPSrc).c_str());
+    if(this->IsMyMac(packet.m_EtherSrc)) return; //packet send from me no need to trace.
 
 	this->AddIP2Query(packet);
-	/*
-	 this->ArpQueryIP(packet.m_nIPSrc,
-	 (u_char *) packet.m_pEthernet->ether_shost);
-	 */
 
 }
 /*
@@ -1814,22 +1927,40 @@ void CnetCard::threadArpCacheReaderRun() {
 	//("Arp cache thread done\n");
 
 }
-void* CnetCard::threadGroundedWorker(void *para) {
+void* CnetCard::threadRoutingWorker(void *para) {
 	CnetCard * c = (CnetCard *) para;
-	c->threadGroundedWorkerRun();
+	c->threadRoutingWorkerRun();
 	return NULL;
 
 }
-void CnetCard::threadGroundedWorkerRun() {
+void CnetCard::threadRoutingWorkerRun() {
 
 	unsigned long nLastCheckMinutes = 0;
+	unsigned long nLastCheckOfflineSeconds=0;
+	bool bCheckGround=false;
+		bool bCheckOffline=false;
 	while (!this->m_EventsQuit.WaitForEvent(3 * 1000)) {
+
+		 bCheckGround=false;
+		 bCheckOffline=false;
 
 		time_t theTime = time(NULL);
 		struct tm *aTime = localtime(&theTime);
-		if (nLastCheckMinutes == aTime->tm_min)
+		if (nLastCheckMinutes != aTime->tm_min)
+		{
+			bCheckGround=true;
+			nLastCheckMinutes = aTime->tm_min;
+		}
+
+
+		if (nLastCheckOfflineSeconds != aTime->tm_sec/10)  //every 10 seconds check offline
+			{
+			   bCheckOffline=true;
+				nLastCheckOfflineSeconds = aTime->tm_sec/10;
+			}
+
+		if(!bCheckGround&&!bCheckOffline)
 			continue;
-		nLastCheckMinutes = aTime->tm_min;
 
 		m_lock.lock();
 
@@ -1838,10 +1969,20 @@ void CnetCard::threadGroundedWorkerRun() {
 		for (it = m_computers.begin(); it != m_computers.end(); ++it) {
 			CComputer &computer = (*it).second;
 
-			if (computer.HasGroundedSetting()) {
+			if (bCheckGround&&computer.HasGroundedSetting()) {
 				computer.GroundedRoutine();
 				this->OnComputerUpdate(computer);
 			}
+
+			if (bCheckOffline&&!computer.IsOffline()) {
+				if (computer.OfflineChecker()) //Send ARP query to this computer
+				{
+					AddComputer2Query(computer);
+				}
+				if (computer.IsOffline())
+					this->SetComputerOnOffline(computer,computer.IsOffline());
+			}
+
 		}
 
 		m_lock.unlock();
@@ -1912,7 +2053,7 @@ void CnetCard::FixMac2Name(const MACADDR & p_mac, string p_sName) {
 
 		m_Name2MacList[p_mac].bFixed = true;
 		m_Name2MacList[p_mac].sName = p_sName;
-		this->SetComputerName(p_mac, p_sName);
+		this->SetComputerName(p_mac, p_sName,true);
 
 		SaveMacNodeName();
 	} while (false);
@@ -2021,7 +2162,7 @@ void* CnetCard::threadMakeSureOnOffWorker(void *para) {
 
 }
 void CnetCard::threadMakeSureOnOffWorkerRun() {
-	while (!this->m_EventsQuit.WaitForEvent(1 * 500)) {
+	while (!this->m_EventsQuit.WaitForEvent(1 * 700)) {
 		MakeSureoffAll();
 	}
 
@@ -2468,15 +2609,25 @@ bool CnetCard::QueryIP(const DWORD & p_IP, u_char * p_buf) {
 
 		if (p_IP == 0)
 			break;
-		if ((p_buf == 0||(p_buf != 0 && CAddressHelper::isBrocastMAC(p_buf)))&& this->IsKnownIP(p_IP))
+		if ((p_buf == 0 || (p_buf != 0 && CAddressHelper::isBrocastMAC(p_buf)))
+				&& this->IsKnownIP(p_IP))
 			break;
 
-		if (p_buf != 0 &&this->IsKnownNode(p_buf,p_IP))
+		if (p_buf != 0 && this->IsKnownNode(p_buf, p_IP))
 			break;
 
+		if(p_buf != 0 &&CAddressHelper::isBrocastMAC(p_buf))
+			{
+						string sStatus = "Searching " + CAddressHelper::IntIP2str(p_IP) + " Done";
+									this->UpdateStatus(sStatus);
+						}
 
 		if (IsMyGateIP(p_IP)) {
-			TRACE("scaning Gateway %s %s\n",CAddressHelper::IntIP2str(p_IP).c_str(),p_buf!=0?CAddressHelper::BufferMac2str(p_buf).c_str():"[Empty]");
+			TRACE("scaning Gateway %s %s\n",
+					CAddressHelper::IntIP2str(p_IP).c_str(),
+					p_buf != 0 ?
+							CAddressHelper::BufferMac2str(p_buf).c_str() :
+							"[Empty]");
 			msleep(1000);
 		}
 
@@ -2488,7 +2639,7 @@ bool CnetCard::QueryIP(const DWORD & p_IP, u_char * p_buf) {
 	} while (false);
 	return bRet;
 }
-bool CnetCard::ArpQueryIP(const DWORD & p_IP, u_char * p_buf) {
+bool CnetCard::ArpQueryIP(const DWORD & p_IP, const u_char * p_buf) {
 
 	bool bQuery = true;
 	DWORD nMyIP = this->GetMyIP();
@@ -2498,13 +2649,6 @@ bool CnetCard::ArpQueryIP(const DWORD & p_IP, u_char * p_buf) {
 	}
 
 	do {
-		if (p_IP == 0)
-			break;
-		if (p_buf == 0 && this->IsKnownIP(p_IP))
-			break;
-
-		if (p_buf != 0 && this->IsKnownNode(p_buf, p_IP))
-			break;
 
 		//DWORD nMyIP = p_bNoIP ? 0 : GetMyIP();
 		u_char targetbuf[6];
@@ -2940,7 +3084,32 @@ void CnetCard::OnComputerGroundedUpdate(CComputer & p_Computer) {
 			m_CallNetworkHandle.HandlerParentPointer);
 
 }
+void CnetCard::OnComputerUpdate(CComputer & p_Computer, int p_nType,int p_nValue) {
 
+	return;
+
+	if (m_CallNetworkHandle.HandlerParentPointer != NULL) {
+
+		CIPCMessageMac_INT_Value * p =
+				(CIPCMessageMac_INT_Value *) CIPCMessageObjectFactory::GetInstance()->Get(
+						IPCMESSAGE_ID_MAC_INT_VALUE);
+		if (p == NULL)
+			return;
+
+		memcpy(p->m_message.MacBuff,p_Computer.GetMac(),6);
+		p->m_message.nMac_INT_Type=p_nType;
+		p->m_message.nMac_INT_Value=p_nValue;
+
+		m_CallNetworkHandle.Handler((void *) p,
+				m_CallNetworkHandle.HandlerParentPointer);
+
+	}
+/*
+	if (p_Computer.HasGroundedSetting()) {
+		this->OnComputerGroundedUpdate(p_Computer);
+	}
+	*/
+}
 void CnetCard::OnComputerUpdate(CComputer & p_Computer, int p_nType) {
 
 	if (m_CallNetworkHandle.HandlerParentPointer != NULL) {
@@ -2954,6 +3123,7 @@ void CnetCard::OnComputerUpdate(CComputer & p_Computer, int p_nType) {
 
 		p->SetIPs(p_Computer.GetIPs());
 		p->m_message.bOff = p_Computer.IsOff();
+
 		p->m_message.bDefender = p_Computer.IsNetCutDefender();
 		p->m_message.bAttacker = p_Computer.IsAttacker();
 		p->m_message.bIsMydevivce = p_Computer.IsMyself();
@@ -2962,34 +3132,34 @@ void CnetCard::OnComputerUpdate(CComputer & p_Computer, int p_nType) {
 		//	p->m_message.nAgeRate=p_Computer.GetAgeRate();
 
 		p->SetBrand(p_Computer.GetBrand());
-		p->SetHostname(p_Computer.GetName());
+		p->SetHostname(p_Computer.GetHostName());
 		p->SetMac(p_Computer.GetMac());
+		p->SetNickname(p_Computer.GetName());p->m_message.gOneTime = p_Computer.GetGroundInfo(GROUND_TYPE_ONETIME);
+		p->SetSpeedLimit(p_Computer.GetSpeedLimit());
 
-		std::map<DWORD, bool> ips;
-		p_Computer.GetIPs(ips);
 
-		map<DWORD, bool>::iterator ipit;
+		p->m_message.gDaily = p_Computer.GetGroundInfo(GROUND_TYPE_DAILY);
+		p->m_message.gOneTime = p_Computer.GetGroundInfo(GROUND_TYPE_ONETIME);
+		p->m_message.nLeftSeconds = p_Computer.GetGroundLeftSeconds();
+		p->m_message.bOnline=!p_Computer.IsOffline();
+		p->m_message.nLastOfflineTime=p_Computer.GetOfflineTime();
+		p->m_message.nLastOnlineTime=p_Computer.GetOnlineTime();
 
-		int i = 0;
-		for (ipit = ips.begin(); ipit != ips.end(); ++ipit) {
-
-			if (i >= 12)
-				break;
-			DWORD ip = (*ipit).first;
-			p->m_message.nIPs[i++] = ip;
-			p->m_message.nIPCount = i;
-		}
-
+		if(p->m_message.bOff)
+			{
+				TRACE("computer %s set off\n",p->m_message.sIPs);
+			}
 		m_lock.unlock();
 
 		m_CallNetworkHandle.Handler((void *) p,
 				m_CallNetworkHandle.HandlerParentPointer);
 
 	}
-
+/*
 	if (p_Computer.HasGroundedSetting()) {
 		this->OnComputerGroundedUpdate(p_Computer);
 	}
+	*/
 }
 
 /*
@@ -3060,11 +3230,16 @@ void CnetCard::AddnewComputer(const MACADDR & macarray, const DWORD & p_nIP) {
 			 */
 			break;
 		}
+      CComputer * pOldComputer=this->GetComputerByIP(p_nIP);
+      if(pOldComputer!=NULL)
+    	  {
+    	  pOldComputer->RemoveIP(p_nIP);
+    	  this->OnComputerUpdate(*pOldComputer);
+    	  }
 
 		TRACE("adding computer %s %s\n",
 				CAddressHelper::IntIP2str(p_nIP).c_str(),
 				CAddressHelper::BufferMac2str(macarray.data()).c_str());
-
 
 		sStatus = "found user: " + CAddressHelper::IntIP2str(p_nIP);
 		UpdateStatus(sStatus);
@@ -3084,30 +3259,27 @@ void CnetCard::AddnewComputer(const MACADDR & macarray, const DWORD & p_nIP) {
 		m_computers[macarray].SetMac(macarray.data());
 		m_computers[macarray].AddIP(p_nIP);
 
-		/*
-		 if (p_nIP == CAddressHelper::StrIP2Int("192.168.1.104")) {
-		 SetComputerOnOff(m_computers[macarray], true);
 
-		 }
-		 */
 
-		string s = this->QueryMac2Name(macarray);
 
-		string nodename;
+
 		if (this->IsMyMac(macarray)) {
 			m_computers[macarray].SetIsMySelf(true);
 			if (this->m_bProtection)
 				m_computers[macarray].FlagAsNetCutDefender();
-			//nodename="(MySelf)";
+
 		}
 
 		string brand = CAddressHelper::GetMacBrand(macarray.data());
 
 		m_computers[macarray].SetBrand(brand);
+		if (m_Name2MacList.count(macarray))
+		{
 
-		nodename += s;
-		if (nodename != "")
-			this->SetComputerName(macarray, nodename);
+				this->SetComputerName(macarray, m_Name2MacList[macarray].sName,m_Name2MacList[macarray].bFixed);
+
+		}
+
 		//m_computers[macarray].SetName(nodename);
 
 		if (this->m_GatewayIPMap.count(p_nIP)) {
@@ -3141,27 +3313,24 @@ void CnetCard::AddnewComputer(const MACADDR & macarray, const DWORD & p_nIP) {
 		if (this->m_GroundSetting.count(macarray)) {
 			m_computers[macarray] = m_GroundSetting[macarray];
 		}
+
+		if (m_computers[macarray].IsOff())
+			this->MakeSureOffOn(m_computers[macarray]);
+
+		this->OnComputerUpdate(m_computers[macarray]);
+		srand((unsigned int) _helper_GetMiTime());
+		unsigned short seq = rand();
+		if (this->SendNetbiosQuery(macarray, this->GetMyIP(), p_nIP, seq)) {
+			this->SetIPTRansID(p_nIP, seq);
+		}
+
+		CAddressHelper::Add_ArpEntry(p_nIP, macarray.data(), this->m_sDevName);
+
+
 	} while (false);
 
-	if (m_computers[macarray].IsOff())
-		this->MakeSureOffOn(m_computers[macarray]);
 
-	this->OnComputerUpdate(m_computers[macarray]);
-	srand((unsigned int) _helper_GetMiTime());
-	unsigned short seq = rand();
-	if (this->SendNetbiosQuery(macarray, this->GetMyIP(), p_nIP, seq)) {
-		this->SetIPTRansID(p_nIP, seq);
-	}
-	/*	if (bIsNew && m_computers[macarray].GetName() == "") {
-	 DWORD *p = new DWORD;
-	 *p = p_nIP;
-	 m_NewComputerQueue.AddTail(p);
 
-	 }
-	 */
-	CAddressHelper::Add_ArpEntry(p_nIP, macarray.data(), this->m_sDevName);
-
-	//this->ShowALLComputers();
 
 	m_lock.unlock();
 
@@ -3268,6 +3437,14 @@ int CnetCard::GetCutMethod() {
 	this->m_lock.unlock();
 	return ret;
 }
+
+void CnetCard::SetComputerOnOffline(CComputer &p_Computer, bool p_bOff) {
+
+
+	this->OnComputerUpdate(p_Computer,IPCMESSAGE_ID_MAC_INT_OFFLINE,p_bOff);
+
+}
+
 void CnetCard::SetComputerOnOff(CComputer &p_Computer, bool p_bOff) {
 
 	if (p_bOff == p_Computer.IsOff())  //already set;
@@ -3283,7 +3460,7 @@ void CnetCard::SetComputerOnOff(CComputer &p_Computer, bool p_bOff) {
 	}
 
 	p_Computer.SetOff(p_bOff);
-	if (p_bOff) {
+
 		map<DWORD, bool> ips;
 		p_Computer.GetIPs(ips);
 
@@ -3291,12 +3468,15 @@ void CnetCard::SetComputerOnOff(CComputer &p_Computer, bool p_bOff) {
 				++it) {
 			DWORD ip = (*it).first;
 			//		SetDrop(ip);
+			this->SetIPCufOff(ip,p_bOff);
 		}
 
-	}
+
 
 	this->MakeSureOffOn(p_Computer);
 	this->OnComputerUpdate(p_Computer);
+//	this->OnComputerUpdate(p_Computer,IPCMESSAGE_ID_MAC_INT_CUTOFF,p_bOff);
+
 
 }
 
@@ -3382,19 +3562,19 @@ void CnetCard::MakeSureOffOn(CComputer &p_Computer) {
 							break;
 						}
 						}
-					}
-					else  //Send Speed limit packet
+					} else  //Send Speed limit packet
 					{
-						TRACE("Sending spoof packet %s\n",CAddressHelper::IntIP2str(TargetIp).c_str());
+				//		TRACE("Sending spoof packet %s\n",
+				//				CAddressHelper::IntIP2str(TargetIp).c_str());
 
-					                     	  SendArpWrapper(nGateIP, TargetIp,
-															CAddressHelper::m_macEmpty, mymac,
-															gatemac, mymac,
-															ARPOP_REQUEST);
-													SendArpWrapper(TargetIp, nGateIP,
-															CAddressHelper::m_macEmpty, mymac,
-															targetmac, mymac,
-															ARPOP_REQUEST);
+						SendArpWrapper(nGateIP, TargetIp,
+								CAddressHelper::m_macEmpty, mymac, gatemac,
+								mymac,
+								ARPOP_REQUEST);
+						SendArpWrapper(TargetIp, nGateIP,
+								CAddressHelper::m_macEmpty, mymac, targetmac,
+								mymac,
+								ARPOP_REQUEST);
 					}
 				} else {
 //					send gate a packet with query      Gate   IP, target IP,   empty dst mac,target mac, gate mac mac,target mac,
@@ -3591,16 +3771,26 @@ void CnetCard::SetComputerAgeRate(const MACADDR& p_Mac, const int& p_nAgeRate) {
 	m_lock.unlock();
 
 }
-void CnetCard::SetComputerName(MACADDR p_Mac, string p_sName) {
+void CnetCard::SetComputerName(MACADDR p_Mac, string p_sName,bool p_bFixed) {
 
 	m_lock.lock();
 	if (m_computers.count(p_Mac)) {
 
-		if (m_computers[p_Mac].SetName(p_sName)) {
+		bool bUpdate=false;
+		if(p_bFixed)
+		{
+			bUpdate=m_computers[p_Mac].SetName(p_sName);
+		}
+		else
+		{
+			bUpdate=m_computers[p_Mac].SetHostName(p_sName);
+		}
+		if (bUpdate) {
 			this->OnComputerUpdate(m_computers[p_Mac]);
 			string s = "Got name:" + m_computers[p_Mac].GetName() + " for "
-					+ m_computers[p_Mac].GetIPs()
+					+ m_computers[p_Mac].GetIPs()+" "
 					+ m_computers[p_Mac].GetBrand();
+			TRACE("%s\n",s.c_str());
 			UpdateStatus(s);
 		}
 	}
@@ -3613,8 +3803,9 @@ unsigned short CnetCard::GetIPTransID(const DWORD & p_nIP) {
 	unsigned short n = 0;
 	if (this->m_QueryHistoryID.count(p_nIP)) {
 		n = this->m_QueryHistoryID[p_nIP];
+//		TRACE("Found IP %s ID %hu\n",CAddressHelper::IntIP2str(p_nIP).c_str(),n);
 	}
-//TRACE("Found IP %s ID %ud",CAddressHelper::IntIP2str(p_nIP).c_str(),n);
+
 
 	m_lock.unlock();
 	return n;
@@ -3623,7 +3814,7 @@ void CnetCard::SetIPTRansID(const DWORD & p_nIP, unsigned short p_nID) {
 	m_lock.lock();
 
 	this->m_QueryHistoryID[p_nIP] = p_nID;
-//TRACE("SET IP %s ID %ud\n",CAddressHelper::IntIP2str(p_nIP).c_str(),m_QueryHistoryID[p_nIP]);
+//TRACE("SET IP %s ID %hu\n",CAddressHelper::IntIP2str(p_nIP).c_str(),m_QueryHistoryID[p_nIP]);
 
 	m_lock.unlock();
 

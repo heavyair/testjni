@@ -184,9 +184,12 @@ void CIPCMessageObjectFactory::RegisterMessagesType() {
 		p=new CIPCMessageStatus();
 		m_MessageType[p->TypeID()]=p;
 
-		p=new CIPCMessageSetSpeed();
-		m_MessageType[p->TypeID()]=p;
 
+		p=new CIPCMessageMac_INT_Value();
+			m_MessageType[p->TypeID()]=p;
+
+			p=new CIPCMessageTypeMessage();
+			m_MessageType[p->TypeID()]=p;
 
 }
 

@@ -22,7 +22,7 @@
 namespace NETCUT_CORE_FUNCTION {
 
 
-
+/*
 
 struct message_setspeed {
 							int32_t nSize;
@@ -36,7 +36,7 @@ struct message_setspeed {
 
 class CIPCMessageSetSpeed: public CIPCBaseTemplate <CIPCMessageSetSpeed,message_setspeed,IPCMESSAGE_ID_SETSPEED> {};
 
-
+*/
 
 struct message_id_value {
 	int32_t nSize;
@@ -87,6 +87,18 @@ struct message_onoff {
 				           } __attribute__((packed));
 
 class CIPCMacOnOff: public CIPCBaseTemplate <CIPCMacOnOff,message_onoff,IPCMESSAGE_ID_MAC_ONOFF> {};
+
+
+
+struct message_MAC_INT_Value {
+							int32_t nSize;
+							int32_t nType;
+							int32_t nMac_INT_Type;
+							unsigned char MacBuff[6];
+							int32_t nMac_INT_Value;   //1 off, 0 Online
+				           } __attribute__((packed));
+
+class CIPCMessageMac_INT_Value: public CIPCBaseTemplate <CIPCMessageMac_INT_Value,message_MAC_INT_Value,IPCMESSAGE_ID_MAC_INT_VALUE> {};
 
 
 struct message_gatewayset {

@@ -187,7 +187,7 @@ void CSocketIPC::threadWriterRun() // this one take server data and write into c
 
 		while (it != m_clientList.end()) {
 			int nClient = *it;
-		//	TRACE("sending message type %d size %d\n",newitem->TypeID(),newitem->m_nMessageSize);
+			TRACE("sending message type %d size %d\n",newitem->TypeID(),newitem->m_nMessageSize);
 			if(!newitem->write(nClient))
 			{
 

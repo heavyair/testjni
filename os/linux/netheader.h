@@ -7,6 +7,7 @@
 
 #ifndef NETHEADER_H_
 #define NETHEADER_H_
+
 #define __cplusplus 201103L
 
 #define ANDROID_NETCUTVERSION "15"
@@ -69,6 +70,7 @@
 
 #include "decode.h"
 #include "trace.h"
+//#include <icmp_header_OLD.h>
 
 /* default snap length (maximum bytes per packet to capture) */
 #define MAXPACKET_LEN 1518
@@ -316,6 +318,13 @@ struct networkcallback
 #define EVENT_MAX_IPADDRESS 126
 #define EVENT_FIX_MACSTR 19
 #define EVENT_MAX_MESSAGESIZE EVENT_MAX_IPADDRESS
+
+#define NETCUT_SPEEDLIMIT_UNLIMIT 4
+#define NETCUT_SPEEDLIMIT_75 3
+#define NETCUT_SPEEDLIMIT_50 2
+#define NETCUT_SPEEDLIMIT_25 1
+#define NETCUT_SPEEDLIMIT_CUTOFF 0
+
 
 struct netcardClientEvent
 {

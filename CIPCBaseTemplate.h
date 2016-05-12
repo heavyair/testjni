@@ -38,7 +38,7 @@ template <typename CREATECLASS,typename MEMBER_DATA,int32_t MESSAGE_TYPE_ID> CIP
 	    m_pBufferMessage=(char *)&m_message;
 		m_nMessageSize=sizeof(m_message);
 		m_nMessageType=MESSAGE_TYPE_ID;
-		//TRACE("Message Type %d Size %d\n",m_nMessageType,m_nMessageSize);
+		TRACE("Message Type %d Size %d\n",m_nMessageType,m_nMessageSize);
 		Reset();
 
 }

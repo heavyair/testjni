@@ -17,7 +17,8 @@
 #define TIMEOUT_OVERCOME_ATTACK 10*1000  //
 #define SAYNETCUT_FLAG_SIGN 35*1000
 #define TIMEOUT_FLAG_SIGN 120*1000
-
+#define TIMEOUT_OFFLINE_CHECKER 40
+#define TIMEOUT_OFFLINE_SET 60 //60 seconds no packet set offline
 
 using namespace std;
 
@@ -35,6 +36,7 @@ public:
 //	CComputer& operator=( const Address& other );
 	CComputer( const CComputer& other);
 	void AddIP(const DWORD &p_nIP);
+	void RemoveIP(const DWORD &p_nIP);
 //	void RemoveIP(DWORD p_nIP=0);
 	void GetIPs(std::map <DWORD,bool> &p_Ips);
 	string GetIPs();
@@ -50,12 +52,15 @@ public:
 
 	void SetMac(const unsigned char * p_sBuf);
 	void GetMac(unsigned char *p_sBuf);
+
 	array<u_char,6>  GetMacArray();
 
 	const u_char * GetMac();
 	string GetMacStr();
 	bool SetName(const std::string & p_sName);
+	bool SetHostName(const std::string & p_sName);
 	std::string GetName();
+	std::string GetHostName();
 	void SetBrand(const std::string &p_sBrand);
 	std::string GetBrand();
 	void SetAgeRate(int p_nAgeRate);
@@ -83,6 +88,13 @@ public:
     bool IsGateway();
     void SetIsMySelf(bool p_bIsMyself);
     bool IsMyself();
+    bool OnPacket(); //Update last packet time
+    bool OfflineChecker(); // If true, send ARP probe packet
+    bool IsOffline(); //Return m_bOFfline;
+    unsigned long GetOfflineTime();
+    unsigned long GetOnlineTime();
+
+
 /*
 
     	bool IsGrounded();
@@ -102,11 +114,16 @@ private:
     string m_sMacStr;
     string m_sIps;
     std::string m_sName;
+    std::string m_sHostname;
     std::string m_sBrand;
     bool m_bOff;
-    int  m_nSpeedLimit; //0, no limit, 1, 20mb, 2, 1mb, 3, 128k, 4, 16k 5 2k
+    int  m_nSpeedLimit; //-1, no limit, 1, cut off , 2 , 3, 4
     bool m_bAttacker;
     bool m_bNetCut;
+    bool m_bOffLine;
+    unsigned long m_nLastPacketTime;
+    unsigned long m_nOnlineTime;
+    unsigned long m_nOfflineTime;
 
     bool m_bIsGateWay;
     bool m_bIsMySelf;

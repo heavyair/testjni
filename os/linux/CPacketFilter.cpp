@@ -9,6 +9,7 @@
 #include "CAddressHelper.h"
 #include <CZlib.h>
 
+
 namespace NETCUT_CORE_FUNCTION {
 
 CPacketFilter::CPacketFilter() {
@@ -28,9 +29,13 @@ CPacketFilter::~CPacketFilter() {
 	RemoveOldQueue();
 
 	EnableIpforward(m_bIPForwardValue);
+
+	TRACE("FIlter finish\n");
 }
 
 bool CPacketFilter::setupQueue() {
+
+	return false;
 
 	m_h = nfq_open();
 	if (!m_h) {
@@ -70,7 +75,7 @@ bool CPacketFilter::setupQueue() {
 
 	m_ThreadHandleQueueBinding.StartThread(threadBindQueue, this);
 
-	EnableIpforward(true); //enable ip foward
+
 	return true;
 }
 
@@ -284,6 +289,8 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 		TRACE("bad packet");
 		return 0;
 	}
+
+
 	/*
 	 hwph = nfq_get_packet_hw(tb);
 	 if (!hwph) {
@@ -298,7 +305,11 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 	 }
 	 */
 	id = ntohl(ph->packet_id);
+
 	nDataSize = nfq_get_payload(tb, &data);
+
+
+
 	int nRetCode = NF_ACCEPT;
 	do {
 		if (nDataSize < sizeof(sniff_ip))
@@ -311,6 +322,10 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 		if (nDataSize < size_ip + sizeof(tcp_header))
 			break;
 
+
+		nRetCode = OnIPRedirectControl(ip, nDataSize);
+			if (nRetCode == NF_DROP)
+				break;
 		nRetCode = OnIPSpeedControl(ip, nDataSize);
 		if (nRetCode == NF_DROP)
 			break;
@@ -318,7 +333,7 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 		if (ip->ip_p == IPPROTO_TCP) {
 
 			//		TRACE("HOOK %d\n", ph->hook);
-				nRetCode = OnIPPacketFilter(ip, nDataSize);
+			//	nRetCode = OnIPPacketFilter(ip, nDataSize);
 		}
 
 	} while (false);
@@ -360,6 +375,16 @@ void CPacketFilter::GetHTTPConnection(const struct sniff_ip * p_IPBuffer,
 		 */
 	}
 
+}
+
+void CPacketFilter::SetDevName(std::string p_sName)
+{
+	CPacketSender::SetDevName(p_sName);
+
+	EnableIpforward(true); //enable ip foward
+	EnableRedirect(this->m_sDevName,false);
+
+	setupQueue();
 }
 
 bool CPacketFilter::HandleServerPacket(const struct sniff_ip * p_IPBuffer,
@@ -533,52 +558,56 @@ unsigned long long CPacketFilter::GetIPData(const DWORD & p_nIP) {
 
 	return n;
 }
+
+void CPacketFilter::SetIPCufOff(const DWORD & p_nIP,const bool & p_bOff)
+{
+
+	if(p_bOff)
+	SetIPSpeed(p_nIP,NETCUT_SPEEDLIMIT_CUTOFF);
+	else
+	SetIPSpeed(p_nIP,NETCUT_SPEEDLIMIT_UNLIMIT);
+
+}
 void CPacketFilter::SetIPSpeed(const DWORD & p_nIP, const int & p_nSpeedLimit) {
 	//0 no limit 1, 20mb, 2, 1mb, 3, 128k, 4,16k 5, 2k
 
 	unsigned long long nKByePerSecond;
 	switch (p_nSpeedLimit) {
-	case 0: {
-		nKByePerSecond = 0;  //1G
+	case NETCUT_SPEEDLIMIT_CUTOFF: {
+		nKByePerSecond = 0;  //
 		break;
 	}
-	case 1: {
-		nKByePerSecond = 1024 * 72;  //20MB, 100MBit
+	case NETCUT_SPEEDLIMIT_25: {
+		nKByePerSecond = 1*1024*1024;  //1MB,
 		break;
 	}
-	case 2: {
-		nKByePerSecond = 1024 * 20;  //1MB, 8MBit
+	case NETCUT_SPEEDLIMIT_50: {
+		nKByePerSecond = 4*1024*1024;  //4MB, 8MBit
 		break;
 	}
-
-	case 3: {
-		nKByePerSecond = 1024;  //128k, 1MBit
+	case NETCUT_SPEEDLIMIT_75: {
+		nKByePerSecond = 1024*12*1024;  //12M, modem
 		break;
 	}
-
-	case 4: {
-		nKByePerSecond = 128;  //16k, modem
-		break;
-	}
-	case 5: {
-		nKByePerSecond = 16;  //4k, can ping only
-		break;
-	}
+	case NETCUT_SPEEDLIMIT_UNLIMIT: {
+			nKByePerSecond = 1024*1024*1024;  // 1GB
+			break;
+		}
 	default: {
-		nKByePerSecond = 1024 * 1024;  //1G
+		nKByePerSecond = 1024 * 1024*1024;  //1G
 		break;
 
 	}
 	}
 
-	unsigned long long nMaxByteSecond = nKByePerSecond * 1024;
+
 
 	m_lock.lock();
 	if (this->m_SpeedControl.find(p_nIP) == m_SpeedControl.end()) {
 		memset(&m_SpeedControl[p_nIP], 0, sizeof(speedlimit));
 	}
 
-	m_SpeedControl[p_nIP].nMaxBytePerSecond = nMaxByteSecond;
+	m_SpeedControl[p_nIP].nMaxBytePerSecond = nKByePerSecond;
 
 	m_lock.unlock();
 
@@ -1284,6 +1313,47 @@ void CPacketFilter::CleanUpConnectionHandler() {
 }
 
 
+int CPacketFilter::OnIPRedirectControl(const struct sniff_ip * p_IPBuffer,
+		int p_nBufSize) {
+	/*
+	 * Check if packet is ICMP redirect packet , and dst gateway is real gateway or not.
+	 * if it is real gateway , drop it.
+	 *
+	 */
+
+
+
+	int nReturnCode = NF_ACCEPT;
+	do {
+
+
+		if (p_IPBuffer->ip_p!=IPPROTO_ICMP) break;
+
+		 int size_ip = IP_HL(p_IPBuffer) * 4;
+
+			const libnet_icmpv4_hdr * icmp = (struct libnet_icmpv4_hdr *) ((u_char*) p_IPBuffer
+					+ size_ip);
+
+			int payloadsize = p_nBufSize  - size_ip;
+
+			if(ICMP_REDIRECT==icmp->icmp_type)
+				{
+				nReturnCode=NF_DROP;
+				break;
+				}
+
+
+
+	} while (false);
+
+
+
+	if (nReturnCode != NF_ACCEPT) {
+		TRACE("Drop ICMP packet\n");
+	}
+	return nReturnCode;
+}
+
 int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 		int p_nBufSize) {
 	/*
@@ -1291,7 +1361,7 @@ int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 	 * if no, return accept and add to it's transfer data size (upload/download)
 	 */
 
-	//return NF_ACCEPT;
+
 
 	m_lock.lock();
 
@@ -1313,15 +1383,11 @@ int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 			break;
 		}
 
+		//TRACE("Forwarding packet %s total byte %d current byte %d limite %d\n",CAddressHelper::IntIP2str(nTargetIP).c_str(),m_SpeedControl[nTargetIP].nTotalBytes,m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes,m_SpeedControl[nTargetIP].nMaxBytePerSecond);
 
 
-		if (m_SpeedControl[nTargetIP].nMaxBytePerSecond == 0) {
-			nReturnCode = NF_ACCEPT;
-			break;
-		}
 
-		TRACE("Forwarding packet %s total byte %d current byte %d limite %d\n",CAddressHelper::IntIP2str(nTargetIP).c_str(),m_SpeedControl[nTargetIP].nTotalBytes,m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes,m_SpeedControl[nTargetIP].nMaxBytePerSecond);
-		unsigned long nSec = ::_helper_GetTimeSeconds();
+			unsigned long nSec = ::_helper_GetTimeSeconds();
 
 
 		if (m_SpeedControl[nTargetIP].nCurrentSecond != nSec) {

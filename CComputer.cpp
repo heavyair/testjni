@@ -15,13 +15,18 @@ CComputer::CComputer() {
 
 	m_bAttacker = false;
 	m_bNetCut = false;
+
 	m_nGroundedLeftSeconds = 0;
 	m_nLastNetCutSignTime = 0;
 	m_nLastAttackerSignTime = 0;
 	m_bIsMySelf = false;
 	m_bIsGateWay = false;
 	m_nAgeRate = 10;
-	m_nSpeedLimit=0;
+	m_nSpeedLimit = NETCUT_SPEEDLIMIT_UNLIMIT;
+	m_bOffLine=true;
+	m_nLastPacketTime=0;
+	m_nOnlineTime=0;
+	m_nOfflineTime=0;
 }
 
 CComputer::~CComputer() {
@@ -61,6 +66,7 @@ CComputer& CComputer::operator=(const CComputer& other) {
 	this->m_sMacStr = other.m_sMacStr;
 	memcpy(this->m_sMac, other.m_sMac, 6);
 	this->m_sName = other.m_sName;
+	this->m_sHostname=other.m_sHostname;
 	this->m_Mask = other.m_Mask;
 	this->m_bHasMac = other.m_bHasMac;
 	this->m_bIsMySelf = other.m_bIsMySelf;
@@ -70,7 +76,7 @@ CComputer& CComputer::operator=(const CComputer& other) {
 	this->m_nLastNetCutSignTime = other.m_nLastNetCutSignTime;
 	this->m_nLastAttackerSignTime = other.m_nLastAttackerSignTime;
 	this->m_nGroundedLeftSeconds = other.m_nGroundedLeftSeconds;
-	this->m_nSpeedLimit=other.m_nSpeedLimit;
+	this->m_nSpeedLimit = other.m_nSpeedLimit;
 
 	return *this;
 }
@@ -81,6 +87,19 @@ void CComputer::AddIP(const DWORD &p_nIP) {
 
 	if (!this->IsMyIP(p_nIP))
 		this->m_IPs[p_nIP] = false;
+
+	ReadIPstoStr();
+	m_lock.unlock();
+
+}
+
+
+void CComputer::RemoveIP(const DWORD &p_nIP) {
+
+	m_lock.lock();
+
+	if (this->IsMyIP(p_nIP))
+		this->m_IPs.erase(p_nIP);
 
 	ReadIPstoStr();
 	m_lock.unlock();
@@ -102,7 +121,9 @@ void CComputer::ReadIPstoStr() {
 
 	}
 
+	if(m_IPs.size()>0)
 	m_sIps.pop_back();
+
 	m_lock.unlock();
 }
 /*
@@ -316,6 +337,32 @@ bool CComputer::SetName(const std::string & p_sName) {
 	return bNew;
 
 }
+bool CComputer::SetHostName(const std::string & p_sName) {
+
+	bool bNew = false;
+	m_lock.lock();
+
+	if (p_sName != m_sHostname) {
+		this->m_sHostname = p_sName;
+
+		bNew = true;
+
+		//	TRACE("\n%s got name %s\n", this->m_sIps.c_str(),		this->m_sName.c_str());
+	}
+
+	m_lock.unlock();
+	return bNew;
+
+}
+
+std::string CComputer::GetHostName() {
+
+	m_lock.lock();
+	std::string s = this->m_sHostname;
+	m_lock.unlock();
+	return s;
+}
+
 std::string CComputer::GetName() {
 
 	m_lock.lock();
@@ -393,6 +440,88 @@ void CComputer::SetIsMySelf(bool p_bIsMyself) {
 
 	m_lock.unlock();
 }
+
+bool CComputer::OnPacket() { //Update last packet time
+
+	bool bRet=false; //if need update this computer became online
+	m_lock.lock();
+
+	this->m_nLastPacketTime = ::_helper_GetTimeSeconds();
+	if(m_bOffLine)
+	{
+	m_nOnlineTime=m_nLastPacketTime;
+	this->m_bOffLine = false; //this set computer online
+
+	bRet=true;
+	}
+	m_lock.unlock();
+return bRet;
+
+}
+bool CComputer::OfflineChecker() {
+	// If true, send ARP probe packet
+	// Check If Offline, then update Client computer became offline
+
+	bool bNeedSendPacket = false;
+	m_lock.lock();
+
+	do {
+
+		if(m_bOffLine)  //it is offline already, no need check;
+			break;
+
+		unsigned long nTime = ::_helper_GetTimeSeconds();
+
+		if (nTime - this->m_nLastPacketTime > TIMEOUT_OFFLINE_SET) {
+			        m_nOfflineTime=m_nLastPacketTime;
+					this->m_bOffLine=true;
+			//		TRACE("Computer %s became OFFLINE\n",this->m_sIps.c_str());
+					break;
+				}
+		if (nTime - this->m_nLastPacketTime > TIMEOUT_OFFLINE_CHECKER) {
+			bNeedSendPacket = true; //this set computer online
+			break;
+		}
+	} while (false);
+
+	m_lock.unlock();
+
+	return bNeedSendPacket;
+
+}
+bool CComputer::IsOffline() {
+	//Return m_bOFfline;
+    	bool bRet = false;
+		m_lock.lock();
+
+		bRet=this->m_bOffLine;
+
+		m_lock.unlock();
+
+		return bRet;
+}
+unsigned long CComputer::GetOfflineTime() {
+
+    	unsigned long nRet = 0;
+		m_lock.lock();
+		nRet=this->m_nOfflineTime;
+		m_lock.unlock();
+
+		return nRet;
+
+}
+unsigned long CComputer::GetOnlineTime() {
+
+
+	unsigned long nRet = 0;
+	m_lock.lock();
+	nRet=this->m_nOnlineTime;
+	m_lock.unlock();
+
+	return nRet;
+
+
+}
 bool CComputer::IsMyself() {
 
 	m_lock.lock();
@@ -419,10 +548,9 @@ void CComputer::SetAgeRate(int p_nAgeRate) {
 
 	m_lock.lock();
 
+	this->m_nAgeRate = p_nAgeRate;
 
-	this->m_nAgeRate=p_nAgeRate;
-
-		m_lock.unlock();
+	m_lock.unlock();
 
 }
 int CComputer::GetAgeRate() {
@@ -436,23 +564,30 @@ int CComputer::GetAgeRate() {
 	return n;
 }
 
-int CComputer::GetSpeedLimit()
-{
+int CComputer::GetSpeedLimit() {
 	m_lock.lock();
-		int n = 0;
+	int n = 0;
 
-		n = m_nSpeedLimit;
+	n = m_nSpeedLimit;
 
-		m_lock.unlock();
-		return n;
+	m_lock.unlock();
+	return n;
 
 }
-void CComputer::SetSpeedLimit(int p_nLimitRank)
-{
+void CComputer::SetSpeedLimit(int p_nLimitRank) {
 
 	m_lock.lock();
 
+	if(p_nLimitRank==NETCUT_SPEEDLIMIT_UNLIMIT)
+	{
+		this->SetOff(false);
+	}
+	if(p_nLimitRank==NETCUT_SPEEDLIMIT_CUTOFF)
+	{
+		this->SetOff(true);
+	}
 	this->m_nSpeedLimit = p_nLimitRank;
+
 	m_lock.unlock();
 
 }
@@ -476,14 +611,13 @@ bool CComputer::IsSetOff() {
 	m_lock.unlock();
 	return bStat;
 }
-bool CComputer::IsSpeedLimit()
-{
+bool CComputer::IsSpeedLimit() {
 
 	m_lock.lock();
 	bool bStat = false;
 
-	if(this->m_nSpeedLimit!=0)
-		bStat=true;
+	if (this->m_nSpeedLimit != NETCUT_SPEEDLIMIT_UNLIMIT)
+		bStat = true;
 
 	m_lock.unlock();
 	return bStat;
@@ -504,8 +638,7 @@ bool CComputer::IsOff() {
 		bStat = true;
 	}
 
-	if(this->IsSpeedLimit())
-	{
+	if (this->IsSpeedLimit()) {
 		bStat = true;
 	}
 

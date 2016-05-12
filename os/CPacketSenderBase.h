@@ -92,7 +92,7 @@ virtual bool sendArp(const DWORD &p_DstIP, const DWORD &p_SrcIp,
 		const u_char *p_sEtherDstMac, const u_char * p_sEtherSrcMac,
 		const uint16_t p_nRequesttype)=0;
 
-void SetDevName(std::string p_sName);
+virtual void SetDevName(std::string p_sName);
 
 
 protected:

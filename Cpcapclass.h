@@ -26,7 +26,7 @@ using namespace neosmart;
 #define A_DAY_IN_MI_SECONDS 1000 * 60 * 60 * 24
 //#define A_DAY_IN_MI_SECONDS 1000 * 5
 
-class Cpcapclass : public CPacketFilter,public CSocketIPC, public CNetCardMonitor {
+class Cpcapclass : public CSocketIPC, public CNetCardMonitor {
 public:
 
     static void* threadUpdater(void *para);
@@ -57,10 +57,13 @@ public:
 	//void OnClientData(netcardClientEvent * p_E);
 	//void OnClientData(netcardEvent2 * p_E);
 	void OnNetCardMessage(CIPCMessage * p_Message);
+	void OnNetCardMacIntValueMessage(CIPCMessageMac_INT_Value * p_Message);
 	void OnClientMessage(CIPCMessage * p_Message);
 	void OnClientIntValueMessage(CIPCMessageIDValue * p_Message);
-	void OnClientMacOnOffMessage(CIPCMacOnOff * p_Message);
+	void OnClientTypeMessageValue(CIPCMessageTypeMessage * p_Message);
+	void OnClientMacIntValueMessage(CIPCMessageMac_INT_Value * p_Message);
 	void OnNewClient(int p_nClientSocket);
+	void OnClientMacOnOffMessage(CIPCMacOnOff * p_Message);
 
 	virtual void OnDeviceUpdateFull(CIPCMessageDeviceInfo * p_Dev); // any dev change will triger this
 	void UpdateClients(int p_nType,int p_nOnOFF);
@@ -106,7 +109,7 @@ private:
     CThreadWorker m_ThreadHandleUpdater;
    // CThreadWorker m_ThreadHandleVerify;
 
-	CBlockArray<bool> m_VerifyRequest;
+	//CBlockArray<bool> m_VerifyRequest;
 
 	MyLock m_lock; /* lock */
 	CNetcutEvent  m_EventsQuit;

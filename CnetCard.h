@@ -28,6 +28,7 @@
 #include "CThreadWorker.h"
 #include <CPacketReader.h>
 #include <CPacketSender.h>
+#include <CPacketFilter.h>
 
 
 using namespace Tins;
@@ -48,7 +49,7 @@ using namespace neosmart;
 
 
 //class CnetCard : public netfilterqueue {
-class CnetCard :public CPacketReader, public CPacketSender {
+class CnetCard : public CPacketFilter, public CPacketReader {
 //class CnetCard {
 
 	//Mac,IP,ComputerName,
@@ -122,6 +123,10 @@ public:
 	string GetMyGateMac();
 	string GetAllUserMac();
 
+
+
+	bool GetMacofDstIP(const DWORD & p_nIP, char * p_sBuf);
+	bool GetMyMac(char * p_sBuf);
 	void getMac(u_char *p_sBuf);
 	bool getMacforIP(const DWORD & p_nIP,u_char *p_sBuf);
 	void MakeArpSrcMac(u_char *p_sBuf);
@@ -137,6 +142,7 @@ public:
     void OnClientEvent(const netcardClientEvent * p_nEvent);
     void OnClientMessage(const CIPCMessage * p_Message);
     void SetComputerSpeed(u_char * p_sMacBuf,int p_nLimit);
+    void SetAllComputerSpeed(int p_nLimit);
     bool IsNewRangeIP(const DWORD &p_nIP);
 
     void GetIPsofMac(u_char *p_sBuf,std::map <DWORD,bool> &p_Ips);
@@ -179,12 +185,13 @@ public:
     bool IsRecentQuery(const DWORD & p_IP,int p_nMyIP,u_char * p_buf);
     void AddQueryHistory(const DWORD & p_IP,int p_nMyIP,u_char * p_targetbuf);
 
-    bool ArpQueryIP(const DWORD & p_IP,u_char * p_buf=0);
+    bool ArpQueryIP(const DWORD & p_IP,const u_char * p_buf=0);
     bool QueryIP(const DWORD & p_IP,u_char * p_buf=0);
     //        void AddnewComputer(const u_char *p_buf,DWORD & p_nIP);
     void AddnewComputer(const MACADDR & macarray, const DWORD & p_nIP);
    void CleanUpARPQueryHistory(); //Take none response IP here
    void OnComputerUpdate(CComputer & p_Computer,int p_nType=NETCARDEVENT_NEWCOMPUTERINFO);
+   void OnComputerUpdate(CComputer & p_Computer, int p_nType,int p_nValue);
    void UpdateClient(int p_nMessageType,void * p_data,int p_nSize);
    void OnComputerGroundedUpdate(CComputer & p_Computer);
    void UpdateClients(int p_nType,int p_nOnOFF);
@@ -207,6 +214,7 @@ public:
           void AddMac2Name(const MACADDR & p_mac,string p_sName);
           string QueryMac2Name(const MACADDR & mac);
           CComputer * GetComputerByIP(const DWORD &p_nIP);
+          void OnClientSearchRequest(std::string p_sSearchName);
 
 protected:
  /*  static void *threadTest(void * para);
@@ -237,8 +245,8 @@ protected:
    		static void* threadComputerInfoWorker(void *para);
    		void threadComputerInfoWorkerRun();
 
-   		static void* threadGroundedWorker(void *para);
-   	   		void threadGroundedWorkerRun();
+   		static void* threadRoutingWorker(void *para);
+   	   		void threadRoutingWorkerRun();
 
    		static void* threadArpCacheReader(void *para);
    		   		void threadArpCacheReaderRun();
@@ -285,7 +293,7 @@ private:
        // void MakeSureOffOn(CComputer &p_Computer,int p_nArpOP=ARPOP_REQUEST,int p_nRepeatPacket=1);
         void MakeSureOffOn(CComputer &p_Computer);
         void SetComputerOnOff(CComputer &p_Computer,bool p_bOff=true);
-
+        void SetComputerOnOffline(CComputer &p_Computer,bool p_bOff=true);
         int GetCutMethod();
         void OnCutoffMethodUpdate();
         void MakeSureoffAll();
@@ -293,7 +301,7 @@ private:
         void GetFakeMac(u_char *buff);
         //void OnIPPacket(u_char *packet,uint32_t p_nPacketLen);
 
-
+        void AddComputer2Query(const CComputer &p_Computer);
         void AddIP2Query(const CPacketBase & p_Packet);
        // bool IsIPOff(DWORD p_nIP);
         bool IsMacOff(u_char * p_sBuf);
@@ -305,6 +313,7 @@ private:
 
         void OnTCPPacket(const CPacketBase & packet);
         void OnIPPacket(const CPacketBase & packet);
+        void ProcessComputerOnline(const CPacketBase & packet);
 
         void NewComputerProcess(const CPacketBase & packet);
         void MakesureOffOnProcess(const CPacketBase & packet);
@@ -322,7 +331,7 @@ private:
         void SetIPTRansID(const DWORD & p_nIP,unsigned short p_nID);
 
        //void SetComputerName(DWORD p_nIP,string p_sName);
-       void SetComputerName(MACADDR p_Mac, string p_sName);
+       void SetComputerName(MACADDR p_Mac, string p_sName,bool p_bFixed=false);
 
 
        void TakeIP(DWORD p_nIP);
@@ -384,7 +393,7 @@ private:
 
 	 CThreadWorker m_OnOffworkerThread;
 	 CThreadWorker m_InfoworkerThread;
-	 CThreadWorker m_GroundThread;
+	 CThreadWorker m_RoutingThread;
 	 CThreadWorker m_MakeSureMeLiveThread;
 	 CThreadWorker m_ConnectMeThread;
 	 CThreadWorker m_ArpCacheReaderThread;
@@ -403,6 +412,7 @@ private:
 	bool m_bSlowScan;
 	int m_nCutoffMethod;
 	bool m_bConnectMe;
+	int m_nAllSpeedLimit;
 	ConnectMeStatus m_nConnectMeRequest;
 
 	char m_sErrbuf[PCAP_ERRBUF_SIZE];  //less stack memory apply/release  256 byte

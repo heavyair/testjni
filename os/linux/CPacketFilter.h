@@ -68,6 +68,7 @@ struct speedlimit
     unsigned long long nTotalBytes;
     unsigned long nStartSecond;
 
+
 };
 struct connectionvalue {
 	unsigned long nLastHandledTime;
@@ -105,7 +106,7 @@ public:
 	void threadBindQueueRun();
 
 	static void* threadBindQueue(void *para);
-	bool setupQueue();
+
 
 	bool IsNeededHTTPResponse(std::string & p_sResponse, bool & p_bHTML,
 			bool & p_bGzip, bool & p_bChunked, unsigned int & p_nContentLen); //-1 no need 1 html 0 js
@@ -117,6 +118,8 @@ public:
 	bool IsServerDataLoaded(struct connectionvalue & p_connbuff);
 	u_int32_t Packethandler(struct nfq_q_handle * qh, struct nfq_data *tb);
 	int OnIPPacketFilter(const struct sniff_ip * p_buf, int p_nBufSize);
+	int OnIPRedirectControl(const struct sniff_ip * p_IPBuffer,
+			int p_nBufSize);
 	int OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 			int p_nBufSize);
 	void CleanUpConnectionHandler();
@@ -148,7 +151,10 @@ public:
 				int p_nBufSize, struct connectionvalue & p_connbuff);
 
 	void SetIPSpeed(const DWORD & p_nIP,const int & p_nSpeedLimit);
+	void SetIPCufOff(const DWORD & p_nIP,const bool & p_bOff);
 	unsigned long long GetIPData(const DWORD & p_nIP);
+
+	virtual void SetDevName(std::string p_sName);
 
 	struct nfq_handle *m_h;
 	struct nfq_q_handle *m_qh;
@@ -162,6 +168,9 @@ public:
 	std::map<httpconnection, connectionvalue> m_httphandleconnection;
 
 	std::map<DWORD, speedlimit> m_SpeedControl;
+
+private:
+	bool setupQueue();
 
 	MyLock m_lock; /* lock */
 };

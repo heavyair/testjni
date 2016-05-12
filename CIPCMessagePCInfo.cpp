@@ -50,6 +50,24 @@ void CIPCMessagePCInfo::SetHostname(std::string p_s) {
 
 
 }
+
+void CIPCMessagePCInfo::SetNickname(std::string p_s) {
+	m_message.nNickNameSize= p_s.size() > EVENT_MAX_HOSTNAME ?
+			EVENT_MAX_HOSTNAME :
+			p_s.size();
+
+			memcpy(m_message.sNickName, p_s.c_str(), m_message.nNickNameSize);
+
+
+}
+
+
+void CIPCMessagePCInfo::SetSpeedLimit(int p_nSpeedLimit) {
+
+	m_message.nSpeedLimit=p_nSpeedLimit;
+
+
+}
 CIPCMessagePCInfo::~CIPCMessagePCInfo() {
 	// TODO Auto-generated destructor stub
 }

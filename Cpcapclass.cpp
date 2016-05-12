@@ -24,7 +24,7 @@ Cpcapclass::Cpcapclass() {
 	this->m_sLastKnownGPS = "";
 	this->m_sRealGPS = "";
 
-	setupQueue();  //Disable netfilter for now
+//	setupQueue();  //Disable netfilter for now
 
 //	m_ThreadHandleVerify.StartThread(threadVerify, this);
 
@@ -39,7 +39,7 @@ Cpcapclass::~Cpcapclass() {
 		close(m_nRouteMsgFD);
 
 	}
-	m_VerifyRequest.shutdown();
+//	m_VerifyRequest.shutdown();
 	m_ThreadHandleUpdater.WaitThreadExit();
 //	m_ThreadHandleVerify.WaitThreadExit();
 }
@@ -360,6 +360,59 @@ void Cpcapclass::OnClientMacOnOffMessage(CIPCMacOnOff * p_Message) {
 	}
 
 }
+
+void Cpcapclass::OnClientMacIntValueMessage(CIPCMessageMac_INT_Value * p_Message) {
+	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL)
+		return;
+
+	switch (p_Message->m_message.nMac_INT_Type) {
+
+	case IPCMESSAGE_ID_MAC_INT_SETSPEED: {
+
+
+				MACADDR mac = CAddressHelper::MacBuffer2Array(
+						(u_char *) p_Message->m_message.MacBuff);
+
+				n->SetComputerSpeed(mac.data(), p_Message->m_message.nMac_INT_Value);
+		break;
+	}
+
+	default: {
+		break;
+	}
+	}
+}
+
+
+
+void Cpcapclass::OnClientTypeMessageValue(CIPCMessageTypeMessage * p_Message) {
+	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL)
+		return;
+	if(p_Message->m_message.nMessageSize<=0)
+		return;
+
+	string sMessage(p_Message->m_message.sMessage,p_Message->m_message.nMessageSize);
+
+
+	switch (p_Message->m_message.nMessageType)
+	{
+	case IPCMESSAGE_ID_MESSAGE_TYPE_SEARCHNAME:
+	{
+		n->OnClientSearchRequest(sMessage);
+		break;
+	}
+	default:
+	{
+		break;
+	}
+
+	}
+
+
+}
+
 void Cpcapclass::OnClientIntValueMessage(CIPCMessageIDValue * p_Message) {
 	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
 	if (n == NULL)
@@ -385,6 +438,13 @@ void Cpcapclass::OnClientIntValueMessage(CIPCMessageIDValue * p_Message) {
 		n->SetProtection(p_Message->m_message.nIDValue);
 		break;
 	}
+	case IPCMESSAGE_ID_INT_SPEEDLIMIT_ALL: {
+
+		n->SetAllComputerSpeed(p_Message->m_message.nIDValue);
+		break;
+	}
+
+
 	case IPCMESSAGE_ID_INT_SCANNETWORK: {
 		n->DemandDisCoverNetwork();
 
@@ -410,44 +470,38 @@ void Cpcapclass::OnNetCardMessage(CIPCMessage * p_Message) {
 
 	case IPCMESSAGE_ID_PCINFO:  //New pc appear, need to verify it's age.
 	{
-		bool a = true;
+	/*	bool a = true;
 		this->m_VerifyRequest.AddTail(a);
-		CIPCMessagePCInfo *m = (CIPCMessagePCInfo *) p_Message;
-
-		string s;
-		s.append(m->m_message.sIPs,m->m_message.nIPSize);
-
-		if(s=="192.168.2.14"&&!n->GetComputerByIP(m->m_message.nIPs[0])->IsSpeedLimit())
-		{
-
-			int nSpeed=4;
-			MACADDR mac = CAddressHelper::MacBuffer2Array(
-							(u_char *) m->m_message.MacBuff);
-
-			TRACE("Thread %lu Setting Computer Speed\n",std::this_thread::get_id());
-					n->SetComputerSpeed(mac.data(), nSpeed);
-
-					std::map<DWORD, bool> ips;
-					n->GetIPsofMac(mac.data(), ips);
-
-					map<DWORD, bool>::iterator ipit;
-
-					for (ipit = ips.begin(); ipit != ips.end(); ++ipit) {
-
-						DWORD ip = (*ipit).first;
-						this->SetIPSpeed(ip,nSpeed);
-
-					}
-
-		}
-
+     */
 		break;
 	}
+	case IPCMESSAGE_ID_MAC_INT_VALUE:
+		{
+
+			OnNetCardMacIntValueMessage((CIPCMessageMac_INT_Value *) p_Message);
+			break;
+
+		}
 	default: {
 		break;
 	}
 	}
 }
+
+
+void Cpcapclass::OnNetCardMacIntValueMessage(CIPCMessageMac_INT_Value * p_Message) {
+	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL)
+		return;
+
+	switch (p_Message->m_message.nMac_INT_Type) {
+
+	default: {
+		break;
+	}
+	}
+}
+
 void Cpcapclass::OnClientMessage(CIPCMessage * p_Message) {
 	/*
 	 * Handle client messages
@@ -475,6 +529,14 @@ void Cpcapclass::OnClientMessage(CIPCMessage * p_Message) {
 	 break;
 	 }*/
 
+	case IPCMESSAGE_ID_MESSAGE_TYPE_VALUE:
+	{
+		CIPCMessageTypeMessage * pc = (CIPCMessageTypeMessage *) p_Message;
+		OnClientTypeMessageValue(pc);
+
+		break;
+
+	}
 	case IPCMESSAGE_ID_MAC_ONOFF: {
 		CIPCMacOnOff * pc = (CIPCMacOnOff *) p_Message;
 		this->OnClientMacOnOffMessage(pc);
@@ -497,26 +559,12 @@ void Cpcapclass::OnClientMessage(CIPCMessage * p_Message) {
 		n->FixMac2Name(mac, sName);
 		break;
 	}
-	case IPCMESSAGE_ID_SETSPEED: {
-		CIPCMessageSetSpeed * p = (CIPCMessageSetSpeed *) p_Message;
-		MACADDR mac = CAddressHelper::MacBuffer2Array(
-				(u_char *) p->m_message.MacBuff);
+	case IPCMESSAGE_ID_MAC_INT_VALUE:
+	{
 
-		n->SetComputerSpeed(mac.data(), p->m_message.nSpeedLimit);
-
-		std::map<DWORD, bool> ips;
-		n->GetIPsofMac(mac.data(), ips);
-
-		map<DWORD, bool>::iterator ipit;
-
-		for (ipit = ips.begin(); ipit != ips.end(); ++ipit) {
-
-			DWORD ip = (*ipit).first;
-			this->SetIPSpeed(ip,p->m_message.nSpeedLimit);
-
-		}
-
+		OnClientMacIntValueMessage((CIPCMessageMac_INT_Value *) p_Message);
 		break;
+
 	}
 
 	case IPCMESSAGE_ID_IDVALUE:  //Defender setting
@@ -629,7 +677,7 @@ void Cpcapclass::OnDeviceUpdateFull(CIPCMessageDeviceInfo * p_Dev) {
 			&& this->m_sWorkAdapterName == p_Dev->GetDevName()) {
 		AddNetCard(m_sWorkAdapterName, p_Dev->m_message.MacBuff);
 
-		this->SetDevName(m_sWorkAdapterName); //this tell packet sender dev name
+		//this->SetDevName(m_sWorkAdapterName); //this tell packet sender dev name
 	}
 
 	if (!p_Dev->m_message.bUp)
@@ -683,7 +731,7 @@ void Cpcapclass::OnNewClient(int p_nClientSocket) {
  m_netCards[m_sWorkAdapterName].SetComputerOnOff(p_sMac,p_sip,p_sName,p_bOff);
 
  }
- */
+
 
 void* Cpcapclass::threadVerify(void *para) {
 	Cpcapclass * ptr = (Cpcapclass *) para;
@@ -692,7 +740,7 @@ void* Cpcapclass::threadVerify(void *para) {
 	return NULL;
 
 }
-
+ */
 void* Cpcapclass::threadUpdater(void *para) {
 	Cpcapclass * ptr = (Cpcapclass *) para;
 
@@ -840,7 +888,7 @@ void Cpcapclass::AddNetCard(std::string p_sDev, unsigned char * p_DevMac) {
 	this->m_lock.unlock();
 
 }
-
+/*
 void Cpcapclass::threadVerifyRun() {
 
 	while (!this->m_EventsQuit.WaitForEvent(1 * 10)) {
@@ -888,7 +936,7 @@ void Cpcapclass::threadVerifyRun() {
 	}
 	TRACE("Verify thread quit\n");
 }
-
+*/
 void Cpcapclass::threadUpdaterRun() {
 
 	unsigned long nLastUpdateSuccessTime = 0;

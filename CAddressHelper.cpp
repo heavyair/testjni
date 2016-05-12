@@ -426,6 +426,14 @@ bool CAddressHelper::isEmptyMac(const unsigned char *p_macbuf) {
 
 }
 
+
+bool CAddressHelper::isStringIP(string & p_sStr,DWORD & p_nIP)
+{
+	 	struct sockaddr_in sa;
+	    int result = inet_pton(AF_INET, p_sStr.c_str(), &(sa.sin_addr));
+	    p_nIP=sa.sin_addr.s_addr;
+	    return result == 1;
+}
 bool CAddressHelper::isBrocastIP(DWORD p_nIP) {
 
 	if (CAddressHelper::n239 == p_nIP)

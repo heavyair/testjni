@@ -30,6 +30,26 @@ public:
 };
 
 
+struct message_Type_message {
+					int32_t nSize;
+	    	  	  	int32_t nType;
+	    	  	  	int32_t nMessageType;
+	    	  	  	int32_t nMessageSize;
+		            char sMessage[EVENT_MAX_MESSAGESIZE];
+
+		        } __attribute__((packed));
+
+
+class CIPCMessageTypeMessage: public CIPCBaseTemplate <CIPCMessageTypeMessage,message_Type_message,IPCMESSAGE_ID_MESSAGE_TYPE_VALUE> {
+public:
+
+	void SetMessage(int p_nType,std::string p_sMessage);
+};
+
+
+
+
+
 class CIPCMessageStatus: public CIPCBaseTemplate <CIPCMessageStatus,message_message,IPCMESSAGE_ID_STATUS> {
 public:
 

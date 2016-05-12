@@ -63,6 +63,8 @@ static DWORD GetRandomIP();
 //static void GetNamebyIP(DWORD p_nIP);
 //static void GetNamebyIP(string & p_sIP);
 static bool isBrocastIP(DWORD p_nIP);
+static bool isStringIP(string & p_sStr,DWORD & p_nIP);
+static DWORD GetIPFromString(string & p_str);
 static bool isEmptyMac(const unsigned char *p_macbuf);
 static bool isBrocastMAC(const u_char * p_sBuf);
 static bool GetDevInfo(string &p_sDevName,AdapterInfo & p_AdapterInfo);

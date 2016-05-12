@@ -10,6 +10,7 @@
 
 #include <CIPCMessage.h>
 #include <CIPCBaseTemplate.h>
+#include <CGrounded.h>
 #include "netheader.h"
 
 namespace NETCUT_CORE_FUNCTION {
@@ -31,9 +32,16 @@ struct message_pcinfo {
 		int nBrandSize;
 		char sHostname[EVENT_MAX_HOSTNAME];
 		int nHostNameSize;
+		char sNickName[EVENT_MAX_HOSTNAME];
+		int nNickNameSize;
 		int nSpeedLimit;
-		DWORD nIPs[12];
-		int32_t nIPCount;
+		GroundUnit gDaily;
+		GroundUnit gOneTime;
+		int32_t    nLeftSeconds;
+		bool bOnline;
+		int nLastOnlineTime;
+		int nLastOfflineTime;
+
 
 	}__attribute__((packed));
 
@@ -47,6 +55,11 @@ public:
 	void SetBrand(std::string  p_s);
 	void SetHostname(std::string  p_s);
 	void SetMac(const unsigned char * p_Buf);
+
+
+	void SetNickname(std::string p_s);
+
+	void SetSpeedLimit(int p_nSpeedLimit);
 
 
 

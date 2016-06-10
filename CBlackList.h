@@ -30,6 +30,7 @@ public:
 		MACADDR mac;
 		map<DWORD,bool> IPs;
 		string hostname;
+		int nSpeedLimit;
 
 };
 

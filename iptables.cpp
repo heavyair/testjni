@@ -19,7 +19,7 @@ bool iptables_commands(const char * p_sCmd)
 {
 
 	int r=system(p_sCmd);
-//	TRACE("System command %s\n",p_sCmd);
+	//TRACE("System command %s return code %d\n",p_sCmd,r);
 	if(r==0)
     return true;
 

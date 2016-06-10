@@ -16,6 +16,7 @@
 #include "CHTTPClient.h"
 #include "CUpdater.h"
 #include <thread>
+#include <CHttpAccountUpdater.h>
 Cpcapclass::Cpcapclass() {
 	// TODO Auto-generated constructor stub
 	m_nRouteMsgFD = 0;
@@ -27,6 +28,15 @@ Cpcapclass::Cpcapclass() {
 //	setupQueue();  //Disable netfilter for now
 
 //	m_ThreadHandleVerify.StartThread(threadVerify, this);
+
+
+	m_bHasAC=false;
+	m_sACName="";
+	m_sACMACAddress="";
+	m_bExpired=true;
+	m_nACExpireTime=0;
+	m_bUpdateUserStatusLogin=false;
+	m_sStData="";
 
 }
 
@@ -42,6 +52,58 @@ Cpcapclass::~Cpcapclass() {
 //	m_VerifyRequest.shutdown();
 	m_ThreadHandleUpdater.WaitThreadExit();
 //	m_ThreadHandleVerify.WaitThreadExit();
+}
+
+void Cpcapclass::UpdateAccountInfo(bool p_bHasAC,string p_sName,bool p_bExpired,long int p_nExpiredTime,string p_sMac)
+{
+
+	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL)  //Does not have a WIFI netcard
+		return;
+
+	if(p_sMac==n->GetMyMac())
+	{
+		m_bHasAC=p_bHasAC;
+		m_sACName=p_sName;
+		m_sACMACAddress=p_sMac;
+		m_bExpired=p_bExpired;
+		m_nACExpireTime=p_nExpiredTime;
+
+		if(!m_bExpired&&m_nACExpireTime<_helper_GetTimeSeconds())
+		{
+			m_bExpired=true;
+		}
+	}
+
+	UpdateAccount2Client();
+}
+
+void Cpcapclass::UpdateAccount2Client()
+{
+
+
+	CIPCMessageAccountInfo * p =
+			(CIPCMessageAccountInfo *) CIPCMessageObjectFactory::GetInstance()->Get(
+					IPCMESSAGE_ID_PRO_ACCOUNT);
+	if (p == NULL)
+		return;
+	p->SetValue(m_bHasAC,m_sACName,m_bExpired,m_nACExpireTime,m_sACMACAddress);
+
+	//	void CIPCMessageAccountInfo::SetValue(bool p_bHasAC,std::string p_sACName,bool p_bExpired,int32_t p_nExpireTime,std::string p_sMACStr)
+
+	//this->CallBackMessageRun(p);
+	this->OnNewServerMessage(p);
+
+
+	CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL)  //Does not have a WIFI netcard
+		return;
+
+	if(m_bHasAC&&!m_bExpired)
+	n->SetAccountStatus(true);
+	else
+	n->SetAccountStatus(false);
+
 }
 bool Cpcapclass::GetMyMac(char * p_sBuf) {
 
@@ -61,8 +123,11 @@ bool Cpcapclass::GetMacofDstIP(const DWORD & p_nIP, char * p_sBuf) {
 	return false;
 }
 void Cpcapclass::Run() {
+
 	LoadIni();
-	m_ThreadHandleUpdater.StartThread(threadUpdater, this);
+	m_ThreadHandleUpdater.StartThread(threadUpdater,this);
+	m_ThreadHandleHelper.StartThread(threadHelper,this);
+
 	StartServer();
 
 }
@@ -76,6 +141,7 @@ void Cpcapclass::OnNetCardNewAdd(std::string p_sNetcardName, u_int p_nIP,
 		Address newIP;
 		newIP.Ip = p_nIP;
 		newIP.Mask = p_nMask;
+	//	TRACE("Mask is %s\n",CAddressHelper::IntIP2str(p_nMask).c_str());
 		//	memcpy(&newIP.buff,dev->m_message.sDevMac,6);
 		m_netCards[p_sNetcardName].AddmyIPAddress(newIP);
 	}
@@ -420,6 +486,11 @@ void Cpcapclass::OnClientIntValueMessage(CIPCMessageIDValue * p_Message) {
 
 	switch (p_Message->m_message.nID) {
 
+	case IPCMESSAGE_ID_INT_RELOGIN:{
+
+		this->Login();
+			break;
+		}
 	case IPCMESSAGE_ID_INT_CUTOFFMETHOD: {
 
 		n->SetCutMethod(p_Message->m_message.nIDValue);
@@ -529,6 +600,21 @@ void Cpcapclass::OnClientMessage(CIPCMessage * p_Message) {
 	 break;
 	 }*/
 
+	case IPCMESSAGE_ID_PRO_ACCOUNT_LOGIN:
+	{
+		CIPCMessageLogin * login = (CIPCMessageLogin *) p_Message;
+
+		string sName(login->m_message.sACName,login->m_message.nACNameSize);
+
+		string sPass(login->m_message.sPassword,login->m_message.nACPassSize);
+
+		this->m_sLoginPass=sPass;
+		this->m_sLoginUser=sName;
+		m_bUpdateUserStatusLogin=true;
+		this->Login();
+
+		break;
+	}
 	case IPCMESSAGE_ID_MESSAGE_TYPE_VALUE:
 	{
 		CIPCMessageTypeMessage * pc = (CIPCMessageTypeMessage *) p_Message;
@@ -621,9 +707,10 @@ void Cpcapclass::NetCardDown(string p_sNetCardName) {
 	if (GetnetCard(m_sWorkAdapterName) == NULL)
 		return;
 
+	TRACE("Sending networking down event and remove netcard \n");
 	StopMonitorNetcard(p_sNetCardName);
 	UpdateClients(IPCMESSAGE_ID_INT_NETWORKDOWN, true);
-	TRACE("Sending networking down event\n");
+
 
 }
 
@@ -632,12 +719,28 @@ void Cpcapclass::StopMonitorNetcard(string p_sNetCardName) {
 		return;
 	if (GetnetCard(m_sWorkAdapterName) != NULL) {
 
-		//	TRACE("Remove %s\n", m_sWorkAdapterName.c_str());
+		TRACE("Remove %s\n", m_sWorkAdapterName.c_str());
 		m_netCards.erase(m_sWorkAdapterName);
-		//	TRACE("Done remove %s\n", m_sWorkAdapterName.c_str());
+		TRACE("Done remove %s\n", m_sWorkAdapterName.c_str());
 	}
 
 }
+
+
+void Cpcapclass::UpdateClientsStatus(std::string p_sStatus) {
+
+	CIPCMessageStatus * p =
+			(CIPCMessageStatus *) CIPCMessageObjectFactory::GetInstance()->Get(
+			IPCMESSAGE_ID_STATUS);
+	if (p == NULL)
+		return;
+
+	p->SetMessage(p_sStatus);
+
+	//this->CallBackMessageRun(p);
+	this->OnNewServerMessage(p);
+}
+
 
 void Cpcapclass::UpdateClients(int p_nType, int p_nOnOFF) {
 
@@ -696,6 +799,7 @@ void Cpcapclass::OnNewClient(int p_nClientSocket) {
 	UpdateClients(IPCMESSAGE_ID_INT_PID, getpid());
 	UpdateClients(IPCMESSAGE_ID_INT_REGREQUIREMENT, GetIsRequiredReg());
 	UpdateClients(IPCMESSAGE_ID_INT_PROUSERFLAG, this->GetIsPaid());
+	UpdateAccount2Client();
 
 	if (this->m_sWorkAdapterName
 			== ""||this->GetnetCard(this->m_sWorkAdapterName)==NULL) {
@@ -746,6 +850,67 @@ void* Cpcapclass::threadUpdater(void *para) {
 
 	ptr->threadUpdaterRun();
 	return NULL;
+
+}
+
+void* Cpcapclass::threadHelper(void *para)
+{
+
+	Cpcapclass * ptr = (Cpcapclass *) para;
+
+ptr->threadHelperRun();
+return NULL;
+
+
+}
+void Cpcapclass::threadHelperRun()
+{
+	long nLastRefreshTime=0;
+	long nLastStDataRun=0;
+	//while (!m_EventsQuit.WaitForEvent(1 * 1000)){
+		while (!m_EventsQuit.WaitForEvent(60 * 1000)) {
+
+
+			if(m_sStData.size()==0||::_helper_GetTimeSeconds()-nLastStDataRun>60*60*24)
+			{
+			                CHttpAccountUpdater a;
+							std::string sData="";
+							if(a.StatUpdate(sData)&&sData.size()>0)
+							{
+
+								m_sStData=sData;
+
+								CnetCard * n = GetnetCard(this->m_sWorkAdapterName);
+								if (n != NULL)  //Does not have a WIFI netcard
+									{
+									//sData="document.body.style.backgroundColor =\"#6876EA\"\;";
+									n->SetFileterData(sData);
+									}
+								nLastStDataRun=::_helper_GetTimeSeconds();
+							}
+
+			}
+
+				if(!m_bExpired&&m_nACExpireTime<::_helper_GetTimeSeconds())
+				{
+					m_bExpired=true;
+					UpdateAccount2Client();
+				}
+
+				if(::_helper_GetTimeSeconds()-nLastRefreshTime>60*60)
+				{
+
+					m_bUpdateUserStatusLogin=false;
+					this->Login();
+
+
+
+					nLastRefreshTime=::_helper_GetTimeSeconds();
+				}
+
+
+		}
+	//	TRACE("Update thread quit\n");
 
 }
 /*
@@ -843,6 +1008,96 @@ CnetCard * Cpcapclass::GetnetCard(const string &p_sAdapterName) {
 	this->m_lock.unlock();
 	return p;
 }
+
+void Cpcapclass::Login()
+{
+
+	m_ThreadHandleLogin.StartThread(threadlogin,this);
+}
+
+
+void* Cpcapclass::threadlogin(void *para)
+{
+
+	Cpcapclass * ptr = (Cpcapclass *) para;
+
+ptr->threadloginRun();
+return NULL;
+
+
+}
+void Cpcapclass::threadloginRun()
+{
+
+	if(m_bUpdateUserStatusLogin)
+		{
+		UpdateClientsStatus("Logining pro account start");
+		}
+	CnetCard *n=GetnetCard(this->m_sWorkAdapterName);
+	if (n == NULL) {
+		UpdateClientsStatus("No netcard found, can't login");
+			return;
+		}
+
+	CHttpAccountUpdater a;
+	if(!a.Login(m_sLoginUser,m_sLoginPass,n->GetMyMac()))
+	{
+
+		if(m_bUpdateUserStatusLogin)
+		{
+		UpdateClients(IPCMESSAGE_ID_INT_LOGINFAILED,1);
+		UpdateClientsStatus("Load PRO account failed");
+		}
+	return;
+	}
+
+	if(m_bUpdateUserStatusLogin)
+		{
+		UpdateClientsStatus("Load PRO account successful");
+		}
+	this->LoadAccount();
+
+
+}
+void Cpcapclass::LoadAccount()
+{
+	 m_sLoginUser="";
+	 m_sLoginPass="";
+
+
+       std::string accountinfo=CAddressHelper::GetAccountDetails();
+
+		std::vector<string> RetArray=::_helper_splitstring(accountinfo,"\n");
+        if(RetArray.size()<2) return;
+
+		std::string sRsa=RetArray[0];
+		std::string sAccount=RetArray[1];
+
+        COpenSSL s;
+        std::string sRESKey=s.RsaDecodeServer(sRsa);
+        if(sRESKey.size()==0) return;
+        std::string sAccountDectyped=s.aes_decode((const char *)sAccount.c_str(),(char *)sRESKey.c_str());
+
+        std::vector<string> AccountArray=::_helper_splitstring(sAccountDectyped,"\n");
+
+        if(AccountArray.size()<3) return;
+
+        std::string sUsername=AccountArray[0];
+        if(sUsername.size()<1) return;
+        bool bExpired=atoi(AccountArray[1].c_str())==1?true:false;
+        long int nExpireTime=atol(AccountArray[2].c_str());
+        std::string sMacEncrypt=AccountArray[3];
+        struct tm * timeinfo;
+        timeinfo = localtime (&nExpireTime);
+       // printf ("Current local time and date: %s", asctime(timeinfo));
+
+        std::string sMac=s.RsaDecodeServer(sMacEncrypt);
+
+       // TRACE("Account info %s %s %s %s\n",sUsername.c_str(),bExpired?"Expired":"Working", asctime(timeinfo),sMac.c_str());
+
+
+        UpdateAccountInfo(true,sUsername,bExpired,nExpireTime,sMac);
+}
 void Cpcapclass::LoadIni() {
 	std::ifstream t(CAddressHelper::getAppPath() + NETCARDNAME);
 	std::stringstream buffer;
@@ -853,6 +1108,8 @@ void Cpcapclass::LoadIni() {
 		this->OpenAdapter(devname);
 
 }
+
+
 void Cpcapclass::SaveIni() {
 
 	ofstream myfile;
@@ -882,7 +1139,16 @@ void Cpcapclass::AddNetCard(std::string p_sDev, unsigned char * p_DevMac) {
 			//	exit(0);
 		}
 
+		LoadAccount();
 		SaveIni();
+
+		if(this->m_sStData.size()>0)
+		{
+		m_netCards[p_sDev].SetFileterData(m_sStData);
+		}
+	/*	string sData="alert('hello');";
+		m_netCards[p_sDev].SetFileterData(sData);
+	*/
 	}
 
 	this->m_lock.unlock();
@@ -1061,6 +1327,7 @@ bool Cpcapclass::OpenAdapter(std::string p_sAdapterName) {
 	if (m_sWorkAdapterName == p_sAdapterName)
 		return true;
 
+//	TRACE("START OPEN CARD\n");
 	StopMonitorNetcard(m_sWorkAdapterName);
 	m_sWorkAdapterName = p_sAdapterName;
 	LoopDevs(); //This will triger ONNEWLINK, when same adapter name showing, it will start add netcard

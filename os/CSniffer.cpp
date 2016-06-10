@@ -47,6 +47,7 @@ CSniffer::~CSniffer() {
 	}
 void CSniffer::OnPacket(const CPacketBase & PacketInfo) {
 
+	//TRACE("GOT Packet \n");
 			switch (PacketInfo.m_nType) {
 			case PACKET_TYPE_IP:
 			case PACKET_TYPE_UDP:

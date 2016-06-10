@@ -7,7 +7,7 @@
 //============================================================================
 
 #include "Cpcapclass.h"
-
+#include <CHttpAccountUpdater.h>
 #include "netheader.h"
 #include <CNetCard2.h>
 
@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <unistd.h>
+#include <COpenSSL.h>
 
 #include "netfilterqueue.h"
 
@@ -29,6 +30,7 @@ void exit_cleanup()
 {
 	if (test != NULL)
 	{
+		    test->StopServer();
 			delete test;
 			test=NULL;
 	}
@@ -43,6 +45,26 @@ void exit_handler(int s) {
 
 
 int main(int argc, char * * argv) {
+
+
+	/*s
+	COpenSSL c;
+	std::string enc;
+	std::string out;
+	//c.testAES("1234567812345678","12345678901234567890012345678909999999999",true,enc);
+
+std::string sMac="YmD6nOYyYVxb+D9JK7WQ2uKr07dCcCh/57nsX5ctEygyuxUAQQPPqMNrqDMR8KmyOB6amMcfZEjGGloTc9Yp4SY+pg6oTeGoHxnk3qaJVRDF5bsXcMQ+559J0BkJKZVtbXWqwSZoxuAM3SnTaJcDXxrzDYLXevRPCAgK8EZIvIct+LeFqKCUtYuAqQqVDdOx2rN2BET39GHJiusAeCw356IuQdxysm69Gpsnj+ZSMY2WqhBwOlMXX7kfeKDQSc5Ao8OVcIHwocRzUtBCZT5ujFr3Hx6O+mZtpfEJCHznzJdeoKBOnVIG12cI0qPnnkIIEdAb9c2tPZuqPT9sySmIscFhhpNErH/NG1A76tysvdMTz6NDa2Y+x4c81/rFBMywsPaDIhexK6pF+Q+pkpuclrkCGL/4X8+OzDI6oxq/CS+NtN4p9RWMt1+csGu2eQ7ZL8P2I3okQYa2oatR+Emtpj6/FE00r1fPCzmQhpvHujqZndLf2PHzF6hi5XKOL3QZyJLUMa9SAOkTYv+9ng2/xnbjpkaOZ+PbpXRDSv3YkkvyoeXeEKK+0qgx/eFB6q2jS60qmUbTWo1pyMEMj6hAJGc51pjwW4aykf3BXXWvYuBCczP1zLiQtC7Jk77tyy4r9W9iGrAcsMDV/2j0UJJ16zLF24yA9gtCYjZkwnF8QsY=";
+
+
+	out=c.RsaDecode(sMac);
+	//c.testAES("1234567812345678",enc,false,out);
+
+	//enc=c.aes_encode("12345678901234567890012345678909999999999","1234567812345678");
+
+	//out=c.aes_decode(enc.c_str(),"1234567812345678");
+
+	TRACE("result %s\n",out.c_str());
+*/
 
 	/*
 	int m_nEventFD=eventfd(0,0);
@@ -157,15 +179,15 @@ int main(int argc, char * * argv) {
 
 	CAddressHelper::m_sMyCmdLine=dev;
 
-/*	CPacketSender s;
-	s.SetDevName("wlan0");
-	s.sendTCP(102,102,80,80,1,1024,TH_SYN,NULL,0);
-*/
   	test = new Cpcapclass();
-  	test->Run();
 
-  	//sleep(10);
-  //	delete test;
+  	test->Run();
+/*
+
+	CPacketReader test;
+	test.SetDeviceName("wlan0");
+	test.StartSniff();
+*/
 
   	pause();
 

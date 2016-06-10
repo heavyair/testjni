@@ -4,8 +4,8 @@ MY_PCAP_PATH := $(LOCAL_PATH)
 include $(CLEAR_VARS)
 
 #Comment off below two lines to enable PIE for 16+ SDK
-#LOCAL_CFLAGS += -fPIE
-#LOCAL_LDFLAGS += -fPIE -pie
+LOCAL_CFLAGS += -fPIE
+LOCAL_LDFLAGS += -fPIE -pie
 
 LOCAL_MODULE := netcut
 
@@ -70,12 +70,15 @@ LOCAL_SRC_FILES+=$(wildcard $(MY_PCAP_PATH)/*.cpp  $(MY_PCAP_PATH)/os/*.cpp $(MY
 
                    
 APP_OPTIM := debug
-LOCAL_C_INCLUDES := $(MY_PCAP_PATH)/zlib $(MY_PCAP_PATH)/os $(MY_PCAP_PATH)/os/linux $(MY_PCAP_PATH)/ libpcap libnet/include tins tins/tins nbt md5 libnetfilter_queue libnetfilter_queue/libnetfilterqueue_include libnfnetlink/libnfnetlink_include libmnl libmnl/libmnl_include
+LOCAL_C_INCLUDES := $(MY_PCAP_PATH)/zlib $(MY_PCAP_PATH)/os $(MY_PCAP_PATH)/os/linux $(MY_PCAP_PATH)/ libpcap libnet/include tins tins/tins nbt md5 libnetfilter_queue libnetfilter_queue/libnetfilterqueue_include libnfnetlink/libnfnetlink_include libmnl libmnl/libmnl_include\
+openssl/include
 
-LOCAL_STATIC_LIBRARIES := libpcap libnet cpufeatures
+LOCAL_STATIC_LIBRARIES := libpcap libnet cpufeatures libcrypto libssl
 include $(BUILD_EXECUTABLE)
-include $(MY_LOCAL_PATH)/libpcap/Android.mk
+include $(MY_LOCAL_PATH)/libpcap-android/Android.mk
 include $(MY_LOCAL_PATH)/libnet/Android.mk
+include $(MY_LOCAL_PATH)/openssl/crypto/Android.mk
+include $(MY_LOCAL_PATH)/openssl/ssl/Android.mk
 
 $(call import-module,android/cpufeatures)
 

@@ -25,6 +25,7 @@ public:
 	CSocketIPC();
 	~CSocketIPC();
 	void StartServer(unsigned int  p_nListenerPort=DEFAULTIPCSERVERPORT);
+	void StopServer();
 	virtual	void OnNewServerMessage(CIPCMessage *p_Message);  //call this to push data to clients
 
 //virtual	void OnNewServerData(netcardEvent & p_E);  //call this to push data to clients
@@ -52,6 +53,7 @@ private:
     void RemoveAllClients();
     list<int> GetClients();
     void SetLinerZero(int p_socket);
+
 private:
     CThreadWorker m_ListenThreadHandle;
     CThreadWorker m_WriteThreadHandle;
@@ -67,6 +69,8 @@ private:
 	std::list<int> m_clientList;
 	CIPCMessageObjectFactory *m_MessageFactory;
 	PointerQueue<CIPCMessage *> m_ServerMessageQueue;  //push server data here,
+
+protected:
 	CNetcutEvent  m_EventsQuit;
 };
 

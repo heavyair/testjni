@@ -10,7 +10,7 @@
 CComputer::CComputer() {
 	// TODO Auto-generated constructor stub
 
-	m_bOff = false;
+	//m_bOff = false;
 	m_bHasMac = false;
 
 	m_bAttacker = false;
@@ -60,7 +60,7 @@ CComputer& CComputer::operator=(const CGrounded& other) {
 CComputer& CComputer::operator=(const CComputer& other) {
 
 	this->m_IPs = other.m_IPs;
-	this->m_bOff = other.m_bOff;
+	//this->m_bOff = other.m_bOff;
 	this->m_sBrand = other.m_sBrand;
 	this->m_sIps = other.m_sIps;
 	this->m_sMacStr = other.m_sMacStr;
@@ -224,7 +224,7 @@ string CComputer::GetIPs() {
 
 void CComputer::GetIPs(std::map<DWORD, bool> &p_Ips) {
 	m_lock.lock();
-	p_Ips = this->m_IPs;
+	p_Ips = m_IPs;
 
 	m_lock.unlock();
 
@@ -578,30 +578,30 @@ void CComputer::SetSpeedLimit(int p_nLimitRank) {
 
 	m_lock.lock();
 
-	if(p_nLimitRank==NETCUT_SPEEDLIMIT_UNLIMIT)
-	{
-		this->SetOff(false);
-	}
-	if(p_nLimitRank==NETCUT_SPEEDLIMIT_CUTOFF)
-	{
-		this->SetOff(true);
-	}
+
 	this->m_nSpeedLimit = p_nLimitRank;
+
+	if (p_nLimitRank==NETCUT_SPEEDLIMIT_UNLIMIT && this->IsGrounded()) {
+		this->DisableTimer();
+	}
 
 	m_lock.unlock();
 
 }
+/*
 void CComputer::SetOff(bool p_Off) {
 
 	m_lock.lock();
 
-	this->m_bOff = p_Off;
-	if (!this->m_bOff && this->IsGrounded()) {
+	//this->m_bOff = p_Off;
+	this->SetSpeedLimit(p_Off?NETCUT_SPEEDLIMIT_CUTOFF:NETCUT_SPEEDLIMIT_UNLIMIT);
+	if (!p_Off && this->IsGrounded()) {
 		this->DisableTimer();
 	}
 
 	m_lock.unlock();
 }
+
 bool CComputer::IsSetOff() {
 	m_lock.lock();
 	bool bStat = false;
@@ -611,6 +611,8 @@ bool CComputer::IsSetOff() {
 	m_lock.unlock();
 	return bStat;
 }
+*/
+
 bool CComputer::IsSpeedLimit() {
 
 	m_lock.lock();
@@ -623,6 +625,27 @@ bool CComputer::IsSpeedLimit() {
 	return bStat;
 
 }
+
+bool CComputer::IsOff() {
+
+	m_lock.lock();
+	bool bStat = false;
+	do
+	{
+	if(IsNetCutDefender())
+		break;
+
+	if (IsSpeedLimit()||IsGrounded())
+		bStat = true;
+
+	}while(false);
+
+	m_lock.unlock();
+	return bStat;
+
+}
+
+/*
 bool CComputer::IsOff() {
 
 	m_lock.lock();
@@ -630,10 +653,7 @@ bool CComputer::IsOff() {
 	if (!IsNetCutDefender() && m_bOff)
 		bStat = true;
 
-	/*	if (IsAttacker()) {
-	 bStat = true;
-	 }
-	 */
+
 	if (IsGrounded()) {
 		bStat = true;
 	}
@@ -646,6 +666,7 @@ bool CComputer::IsOff() {
 	return bStat;
 
 }
+*/
 
 DWORD CComputer::GetMask() {
 

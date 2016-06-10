@@ -65,12 +65,12 @@ public:
 	std::string GetBrand();
 	void SetAgeRate(int p_nAgeRate);
 	int GetAgeRate();
-	void SetOff(bool p_Off);
+	//void SetOff(bool p_Off);
     bool IsOff();
 	void SetSpeedLimit(int p_nLimitRank);//0, no limit, 1, 20mb, 3 xxx
 	int GetSpeedLimit();
     bool IsSpeedLimit();
-    bool IsSetOff();
+   // bool IsSetOff();
 
     void FlagAsAttacker();
     bool IsAttacker();
@@ -116,7 +116,7 @@ private:
     std::string m_sName;
     std::string m_sHostname;
     std::string m_sBrand;
-    bool m_bOff;
+    //bool m_bOff;
     int  m_nSpeedLimit; //-1, no limit, 1, cut off , 2 , 3, 4
     bool m_bAttacker;
     bool m_bNetCut;

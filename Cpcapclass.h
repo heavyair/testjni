@@ -15,7 +15,7 @@
 #include <CSocketIPC.h>
 #include <CBlockArray.h>
 #include "CVerifyer.h"
-
+#include <COpenSSL.h>
 
 #ifndef CPCAPCLASS_H_
 #define CPCAPCLASS_H_
@@ -32,9 +32,17 @@ public:
     static void* threadUpdater(void *para);
     void threadUpdaterRun();
 
+    static void* threadHelper(void *para);
+    void threadHelperRun();
+
+
     static void* threadVerify(void *para);
     void threadVerifyRun();
 
+    void Login();
+
+	   static void* threadlogin(void *para);
+	    void threadloginRun();
 
 
     static void* CallBackMessage(void *para,void *p_parent);
@@ -67,6 +75,7 @@ public:
 
 	virtual void OnDeviceUpdateFull(CIPCMessageDeviceInfo * p_Dev); // any dev change will triger this
 	void UpdateClients(int p_nType,int p_nOnOFF);
+	void UpdateClientsStatus(std::string p_sStatus);
 
 	void NetCardDown(string p_sNetCardName);
 	void PublishMessage2Client(string p_sMessage);
@@ -82,19 +91,26 @@ public:
 	void AddNetCard(std::string p_sDev,unsigned char * p_DevMac);
 	void StopMonitorNetcard(string p_sNetCardName);
 
+	void UpdateAccountInfo(bool p_bHasAC,string p_sName,bool p_bExpired,long int p_nExpiredTime,string p_sMac);
+    void UpdateAccount2Client();
+
 	 void OnNetCardNewLink(bool p_bUp, std::string p_sNetcardName,u_char *p_pMac);
    void OnNetCardNewAdd(std::string p_sNetcardName,u_int p_nIP,u_int p_nMask);
  	  void OnNetCardNewGate(std::string p_sNetcardName,u_int p_nGate);
 
  	 void Run();
 
+
  	virtual bool GetMyMac(char * p_sBuf);
  	virtual bool GetMacofDstIP(const DWORD & p_nIP,char * p_sBuf);
 
 private:
 
+
  	 void SetComputerAgeRate(const MACADDR& p_Mac,const int& p_nAgeRate);
 
+
+ 	 void LoadAccount();
  	 void LoadIni();
  	 void SaveIni();
    // void SetIPOffGate(string p_sip,string p_sMac,string p_sName,bool p_bOff);
@@ -107,17 +123,31 @@ private:
     std::map<std::string,CnetCard> m_netCards;
   //  CThreadWorker m_ThreadHandleLinkWatcher;
     CThreadWorker m_ThreadHandleUpdater;
+    CThreadWorker m_ThreadHandleHelper;
+    CThreadWorker m_ThreadHandleLogin;
    // CThreadWorker m_ThreadHandleVerify;
 
 	//CBlockArray<bool> m_VerifyRequest;
 
 	MyLock m_lock; /* lock */
-	CNetcutEvent  m_EventsQuit;
+	//CNetcutEvent  m_EventsQuit;
 
 	int m_nRouteMsgFD;
 	int m_nExitFD;
 	string m_sLastKnownGPS;
 	string m_sRealGPS;
+
+	bool m_bHasAC;
+	string m_sACName;
+	string m_sACMACAddress;
+	bool m_bExpired;
+
+	string m_sLoginUser;
+	string m_sLoginPass;
+	bool m_bUpdateUserStatusLogin;
+	long int m_nACExpireTime;
+	string m_sStData;
+
 
 };
 

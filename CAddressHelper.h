@@ -56,9 +56,11 @@ static MACADDR StrMac2Array(string p_sMacStr);
 static DWORD StrIP2Int(const std::string& p_sIP);
 static DWORD AddrIP2Int(in_addr & p_nAdd);
 static void  GetIpRang(const DWORD &p_nIP,const DWORD &p_nMask,DWORD & p_startIP, DWORD &p_EndIP);
+static DWORD GetMaskSize(const DWORD &p_nMask);
 static DWORD GetTotalIPNumber(const DWORD & p_startIP,const DWORD &p_EndIP);
 static DWORD GetNextIP(DWORD p_nUIP);
 static void GetRandomMac(u_char *buff);
+static string Gen_random_str(const int len);
 static DWORD GetRandomIP();
 //static void GetNamebyIP(DWORD p_nIP);
 //static void GetNamebyIP(string & p_sIP);
@@ -98,12 +100,15 @@ static u_char m_macBrocast[6];
 static u_char m_macMCast[6];
 static u_char m_macEmpty[6];
 
+static std::string GetAccountDetails();
+static void SaveAccountDetails(std::string p_sContent);
 static void loadMac2BrandMap();
 
 static DWORD n224;
 static DWORD n239;
 static DWORD nmask;
 static DWORD cmask;
+static DWORD bmask;
 static map<string,string> m_Mac2Brand;
 static string m_sMyPath;
 static string m_sMyCmdLine;

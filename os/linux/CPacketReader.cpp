@@ -27,6 +27,7 @@ CPacketReader::~CPacketReader() {
 
 void CPacketReader::StartSniff() {
 
+	m_EventStop.ResetEvent();
 	m_ThreadSniff.StartThread(threadSniffer,this);
 	//m_ThreadPacketWorker.StartThread(threadPacketWorker,this);
 
@@ -34,14 +35,16 @@ void CPacketReader::StartSniff() {
 
 void CPacketReader::StopSniff() {
 
+	m_EventStop.SetEvent();
+
 	if (m_PcapHandle != NULL)
 	{
       pcap_breakloop(m_PcapHandle);
 
+      TRACE("Stopping sniffer\n");
 
 	}
 
-	//m_EventStop.SetEvent();
 
 }
 /*
@@ -53,7 +56,10 @@ bool CPacketReader::IsWorking() {
 
 void* CPacketReader::threadSniffer(void *para) {
 	CPacketReader * ptr = (CPacketReader *) para;
+	while(!ptr->m_EventStop.WaitForEvent(1))
+	{
 	ptr->threadSnifferRun();  //use tins sniffer
+	}
 	//ptr->threadTinsSnifferRun();  //use tins sniffer
 	return NULL;
 }
@@ -88,6 +94,7 @@ void CPacketReader::threadSnifferRun() {
 
 		//bpf_u_int32 netaddr = 0,
 		bpf_u_int32 mask = 0;
+		bpf_u_int32 net=0;			/* ip */
 
 		m_PcapHandle = pcap_open_live(m_sDevName.c_str(), MAXPACKET_LEN, true,
 				1000, this->m_sErrbuf);
@@ -98,9 +105,14 @@ void CPacketReader::threadSnifferRun() {
 		return;
 		}
 
-		mask = 0;
-
-		if (pcap_compile(m_PcapHandle, &filter, "ip or arp or rarp", 1, mask)
+	/*	if (pcap_lookupnet(m_sDevName.c_str(), &net, &mask, m_sErrbuf) == -1) {
+			TRACE("Couldn't get netmask for device %s: %s\n",
+					m_sDevName.c_str(), m_sErrbuf);
+				net = 0;
+				mask = 0;
+			}
+*/
+		if (pcap_compile(m_PcapHandle, &filter, "ip or arp or rarp", 1, net)
 				== -1) {
 			TRACE("ERROR: %s\n", pcap_geterr(m_PcapHandle));
 			return;
@@ -117,12 +129,12 @@ void CPacketReader::threadSnifferRun() {
 		pcap_setdirection(m_PcapHandle, PCAP_D_IN);
 		//	TRACE("Sniff started on %s\n", this->getDevName().c_str());
 
-		TRACE("\nSniffer started  \n");
+		//TRACE("\nSniffer started on %s \n",m_sDevName.c_str());
 		//m_EventStop.ResetEvent();
 		if (pcap_loop(m_PcapHandle, 0, CPacketReader::Got_packet,
 				(u_char *) this) < 1) {
 
-			//	TRACE("Thread Sniff Close.\n");
+
 			 pcap_close(m_PcapHandle);
 			 m_PcapHandle=NULL;
 
@@ -131,16 +143,23 @@ void CPacketReader::threadSnifferRun() {
 
 
 
-//	TRACE("Thread Sniff Close.\n");
+	TRACE("Thread Sniff Close.\n");
 
 }
 
 void CPacketReader::Got_packet(u_char *args,
 		const struct pcap_pkthdr *header, const u_char *packet) {
 
-	if (args == NULL)
-		return;
+	//TRACE("Having packet \n");
 
+	if (args == NULL)
+	{
+
+
+
+
+		return;
+	}
 	CPacketReader *parent = (CPacketReader *) args;
 
 	parent->Got_packetRun(header, packet);
@@ -157,6 +176,8 @@ void CPacketReader::Got_packetRun(const struct pcap_pkthdr *header,
 		CPacketBase PacketInfo;
 		if (PacketInfo.IniMembers(packet, header->caplen))
 		{
+	//		TRACE("Got packet run \n");
+
 			OnPacket(PacketInfo);
 		}
 

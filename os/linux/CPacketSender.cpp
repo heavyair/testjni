@@ -361,7 +361,7 @@ bool CPacketSender::sendArp(const DWORD &p_DstIP, const DWORD &p_SrcIp,
 	do {
 
 		if (LibnetHandle == NULL) {
-	//		TRACE("Libnet Init error\n");
+			TRACE("Libnet Init error\n");
 			bRet = false;
 			break;
 

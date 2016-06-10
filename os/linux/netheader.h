@@ -10,7 +10,7 @@
 
 #define __cplusplus 201103L
 
-#define ANDROID_NETCUTVERSION "15"
+#define ANDROID_NETCUTVERSION "16"
 
 
 #include <time.h>
@@ -276,6 +276,7 @@ struct networkcallback
 
 #define BLACKLISTFILE "blacklist"
 #define GROUNDEDFILE "schedule"
+#define NETCUTPROACFILE "account"
 #define CUTOFFMETHODFILE "method"
 #define NETCARDNAME "device"
 #define MACNODENAMELIST "mac2nodename"

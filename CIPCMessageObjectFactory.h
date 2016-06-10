@@ -15,6 +15,7 @@
 #include <CIPCMessageSniffRequest.h>
 #include <CIPCMessagePCInfo.h>
 #include <CIPCMessageMessage.h>
+#include <CIPCMessageAccountInfo.h>
 #include <CGrounded.h>
 #include <CMyLock.h>
 
@@ -64,6 +65,20 @@ struct message_groundsetting {
 class CIPCMessageGroundSetting: public CIPCBaseTemplate <CIPCMessageGroundSetting,message_groundsetting,IPCMESSAGE_ID_GROUNDSETTING>{};
 
 
+
+
+
+struct message_login {
+	int32_t nSize;
+	int32_t nType;
+	char sACName[255];
+	int nACNameSize;
+	char sPassword[255];
+	int nACPassSize;
+   } __attribute__((packed));
+
+
+class CIPCMessageLogin: public CIPCBaseTemplate <CIPCMessageLogin,message_login,IPCMESSAGE_ID_PRO_ACCOUNT_LOGIN>{};
 
 
 

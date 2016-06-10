@@ -28,11 +28,13 @@ u_char CAddressHelper::m_macEmpty[6] = { 0, 0, 0, 0, 0, 0 };
 string b1 = "224.0.0.0";
 string b2 = "239.255.255.250";
 string maska = "255.0.0.0";
+string maskb="255.255.0.0";
 string maskc = "255.255.255.0";
 
 DWORD CAddressHelper::n224 = CAddressHelper::StrIP2Int(b1);
 DWORD CAddressHelper::n239 = CAddressHelper::StrIP2Int(b2);
 DWORD CAddressHelper::nmask = CAddressHelper::StrIP2Int(maska);
+DWORD CAddressHelper::bmask = CAddressHelper::StrIP2Int(maskb);
 DWORD CAddressHelper::cmask = CAddressHelper::StrIP2Int(maskc);
 string CAddressHelper::m_sMyPath = "";
 string CAddressHelper::m_sMyCmdLine = "";
@@ -58,6 +60,19 @@ void CAddressHelper::GetRandomMac(u_char *buff) {
 	for (int i = 0; i < 6; i++)
 		buff[i] = rand() / 255;
 
+}
+
+
+string CAddressHelper::Gen_random_str(const int len) {
+	string s="";
+    static const char alphanum[] =
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0";
+
+    for (int i = 0; i < len; ++i) {
+        s.append(&alphanum[rand() % (sizeof(alphanum) - 2)],1);
+    }
+
+    return s;
 }
 
 string CAddressHelper::GetNetcutName() {
@@ -125,6 +140,31 @@ std::string CAddressHelper::BufferMac2str(const u_char * p_Buf) {
 	return _helper_Mac_buff2Str(p_Buf);
 
 }
+
+void CAddressHelper::SaveAccountDetails(std::string p_sContent)
+{
+
+	    ofstream myfile;
+		myfile.open(CAddressHelper::getAppPath() + NETCUTPROACFILE,
+				ios::out | ios::binary);
+
+		myfile.write((char *)p_sContent.c_str(),p_sContent.size());
+		myfile.close();
+
+}
+
+std::string CAddressHelper::GetAccountDetails() {
+
+	std::ifstream t(CAddressHelper::getAppPath() + NETCUTPROACFILE);
+			std::stringstream buffer;
+			buffer << t.rdbuf();
+
+			string accountinfo = buffer.str();
+
+			return accountinfo;
+
+}
+
 
 MACADDR CAddressHelper::StrMac2Array(string p_sMacStr) {
 
@@ -492,6 +532,17 @@ void CAddressHelper::GetIpRang(const DWORD &p_nIP, const DWORD &p_nMask,
 
 	p_EndIP = CAddressHelper::StrIP2Int(IntIP2str(NotIP));
 
+}
+
+
+DWORD CAddressHelper::GetMaskSize(const DWORD &p_nMask) {
+	//Get the first IP     Mask are all 1, so & left what masked network part
+
+	DWORD nAllIPs=ntohl(CAddressHelper::StrIP2Int("255.255.255.255"));
+
+	DWORD nSize = nAllIPs ^ ntohl(p_nMask);
+	//get the last IP   revese mask, with start IP a xor ^ will get all max Ip
+	return nSize;
 }
 void CAddressHelper::GetMCastMac(DWORD p_nDstIP, u_char * p_buf) {
 

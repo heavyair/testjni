@@ -45,25 +45,32 @@ void CSocketIPC::SetLinerZero(int p_socket) {
 }
 CSocketIPC::~CSocketIPC() {
 	// TODO Auto-generated destructor stub
-	m_EventsQuit.SetEvent();
-	m_ReaderIO.ShutDown();
-	m_ServerIO.ShutDown();
-	m_ServerMessageQueue.shutdown();
-
-	if (m_nSocket >= 0) {
-		SetLinerZero(m_nSocket);
-		close(m_nSocket);
-	}
-
-	RemoveAllClients();
-
-     m_ListenThreadHandle.WaitThreadExit();
-     m_WriteThreadHandle.WaitThreadExit();
-     m_ReadThreadHandle.WaitThreadExit();
-
-//	TRACE("Done IPC Socket server Exit\n");
+	StopServer();
 }
 
+void CSocketIPC::StopServer()
+{
+
+		m_EventsQuit.SetEvent();
+		m_ReaderIO.ShutDown();
+		m_ServerIO.ShutDown();
+		m_ServerMessageQueue.shutdown();
+
+		if (m_nSocket >= 0) {
+			SetLinerZero(m_nSocket);
+			close(m_nSocket);
+			m_nSocket=0;
+		}
+
+		RemoveAllClients();
+
+	     m_ListenThreadHandle.WaitThreadExit();
+	     m_WriteThreadHandle.WaitThreadExit();
+	     m_ReadThreadHandle.WaitThreadExit();
+
+	//	TRACE("Done IPC Socket server Exit\n");
+
+}
 void* CSocketIPC::threadListener(void *para) {
 
 	CSocketIPC * c = (CSocketIPC *) para;
@@ -124,7 +131,7 @@ void CSocketIPC::threadListenerRun()  //start server
 		if (n > 12)
 		{
 			TRACE(
-								"ERROR: cannot bind to local socket [%s] sleep 3 seconds and retry",
+								"ERROR: cannot bind to local socket [%s] ",
 								strerror(errno));
 
 			return;
@@ -187,7 +194,7 @@ void CSocketIPC::threadWriterRun() // this one take server data and write into c
 
 		while (it != m_clientList.end()) {
 			int nClient = *it;
-			TRACE("sending message type %d size %d\n",newitem->TypeID(),newitem->m_nMessageSize);
+			//TRACE("sending message type %d size %d\n",newitem->TypeID(),newitem->m_nMessageSize);
 			if(!newitem->write(nClient))
 			{
 

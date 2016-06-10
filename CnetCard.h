@@ -49,7 +49,8 @@ using namespace neosmart;
 
 
 //class CnetCard : public netfilterqueue {
-class CnetCard : public CPacketFilter, public CPacketReader {
+class CnetCard :  public CPacketReader,public CPacketFilter {
+//class CnetCard : public CPacketReader {
 //class CnetCard {
 
 	//Mac,IP,ComputerName,
@@ -114,6 +115,7 @@ public:
 
 	//void TestConnection();
 	bool GetIsSlowSCan();
+	bool GetIsSilentScan();
 	bool GetIsRoot();
 	void setDevName(const string &p_sName,const u_char * p_macBuf);
 	std::string getDevName();
@@ -137,14 +139,14 @@ public:
 	bool IsGateWayMac(const MACADDR & p_Mac);
 	bool IsMyGateIP(const DWORD &p_nNewIP);
 	bool IsUp();
-    void SetComputerOnOff(const netcardClientEvent * p_nEvent);
+    //void SetComputerOnOff(const netcardClientEvent * p_nEvent);
     void SetComputerOnOff(u_char * p_sMacBuf,bool p_bOff);
     void OnClientEvent(const netcardClientEvent * p_nEvent);
     void OnClientMessage(const CIPCMessage * p_Message);
     void SetComputerSpeed(u_char * p_sMacBuf,int p_nLimit);
     void SetAllComputerSpeed(int p_nLimit);
     bool IsNewRangeIP(const DWORD &p_nIP);
-
+    DWORD CountComputerSpeedLimit();
     void GetIPsofMac(u_char *p_sBuf,std::map <DWORD,bool> &p_Ips);
 	void AddmyIPAddress(Address& p_newIP);
 	void AddmyGateWay(int32_t p_newGate);
@@ -162,6 +164,8 @@ public:
     void SetProtection(bool p_bOn);
    // void SetConnectMe(ConnectMeStatus p_nConnectMe);
     int GetConnectMeStatus();
+    void SetAccountStatus(bool p_bGoodAccount);
+    bool IsGoodAccount();
 
     bool SendDhcp();
    // bool SendNetbiosQuery(const MACADDR & p_TargetMac,DWORD p_nsIP,DWORD p_ndIP);
@@ -203,12 +207,13 @@ public:
    bool DemandDisCoverNetwork();
 
    void AddDisCoverIP(const DWORD & p_nIP);
+   void SetCurrentScanNetworkIP(const DWORD & p_nIP);
    void ClearAllComputer();
    void SetCutMethod(int p_nCutOffMethod);//0 cut both, 1, only gateway, 2, only target
 
    void EnableFakeMac(bool p_bEnableFakeMac);
    void EnableSlowScan(bool p_bEnableFakeMac);
-   void ShowCutMethod();
+
    void MessageINT_Value(int p_nINTID,int p_nValue);
    void FixMac2Name(const MACADDR & p_mac, string p_sName);
           void AddMac2Name(const MACADDR & p_mac,string p_sName);
@@ -262,6 +267,7 @@ protected:
 private:
 
 
+
         void SendDiscover();
         bool GetIsBeenAttack();
         void SetAttack();
@@ -292,7 +298,7 @@ private:
 
        // void MakeSureOffOn(CComputer &p_Computer,int p_nArpOP=ARPOP_REQUEST,int p_nRepeatPacket=1);
         void MakeSureOffOn(CComputer &p_Computer);
-        void SetComputerOnOff(CComputer &p_Computer,bool p_bOff=true);
+      //  void SetComputerOnOff(CComputer &p_Computer,bool p_bOff=true);
         void SetComputerOnOffline(CComputer &p_Computer,bool p_bOff=true);
         int GetCutMethod();
         void OnCutoffMethodUpdate();
@@ -301,7 +307,7 @@ private:
         void GetFakeMac(u_char *buff);
         //void OnIPPacket(u_char *packet,uint32_t p_nPacketLen);
 
-        void AddComputer2Query(const CComputer &p_Computer);
+        void AddComputer2Query(CComputer &p_Computer);
         void AddIP2Query(const CPacketBase & p_Packet);
        // bool IsIPOff(DWORD p_nIP);
         bool IsMacOff(u_char * p_sBuf);
@@ -375,6 +381,7 @@ private:
     bool m_bUp;
     bool m_bWorkOn;
     bool m_bRunAsRoot;
+    DWORD m_nCurrentScanNetworkIP;
 
 
 
@@ -408,11 +415,15 @@ private:
 	unsigned long m_nLastDisCoverNetworkTime;
 	unsigned long m_nLastStatusTime;
 	bool m_bProtection;
-	bool m_bFakeMac;
-	bool m_bSlowScan;
-	int m_nCutoffMethod;
+
 	bool m_bConnectMe;
 	int m_nAllSpeedLimit;
+	bool m_bFakeMac;
+		bool m_bSlowScan;
+		bool m_bSilentScan;
+		int m_nCutoffMethod;
+
+	bool m_bGoodAccount;
 	ConnectMeStatus m_nConnectMeRequest;
 
 	char m_sErrbuf[PCAP_ERRBUF_SIZE];  //less stack memory apply/release  256 byte

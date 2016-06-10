@@ -28,43 +28,50 @@ CNetCardMonitor::~CNetCardMonitor() {
 	this->m_ExitEvent.SetEvent(IOWATCHER_ID_EXIT);
 	m_ThreadHandleLinkWatcher.WaitThreadExit();
 
-    std::map<std::string, CIPCMessageDeviceInfo *>::iterator it;
+	std::map<std::string, CIPCMessageDeviceInfo *>::iterator it;
 
-		for (it = m_DevMap.begin(); it != m_DevMap.end(); ++it) {
-			CIPCMessageDeviceInfo * Messages = (*it).second;
-   		    CIPCMessageObjectFactory::GetInstance()->Free(Messages);
+	for (it = m_DevMap.begin(); it != m_DevMap.end(); ++it) {
+		CIPCMessageDeviceInfo * Messages = (*it).second;
+		CIPCMessageObjectFactory::GetInstance()->Free(Messages);
 
-		}
+	}
 
 }
-void CNetCardMonitor::LoopDevs()
-{
+void CNetCardMonitor::LoopDevs() {
 
-	    ReadDev(RTM_GETLINK, sizeof(ifinfomsg));
-		ReadDev(RTM_GETADDR, sizeof(ifaddrmsg));
-		ReadDev(RTM_GETROUTE, sizeof(rtmsg));
-
+	ReadDev(RTM_GETLINK, sizeof(ifinfomsg));
+	ReadDev(RTM_GETADDR, sizeof(ifaddrmsg));
+	ReadDev(RTM_GETROUTE, sizeof(rtmsg));
 
 }
 
-void CNetCardMonitor::OnDeviceUpdate(CIPCMessageDeviceInfo * p_Dev)
-{
+void CNetCardMonitor::OnDeviceUpdate(CIPCMessageDeviceInfo * p_Dev) {
 
 	//TRACE("Send p_dev update\n");
-	 OnDeviceUpdateFull((CIPCMessageDeviceInfo *)p_Dev->Create());
 
-	 /*
-	unsigned char Emptybuf[6];
-	memset(Emptybuf,0,6);
-
-	if(memcmp(p_Dev->m_message.MacBuff,Emptybuf,6)!=0)  //if this dev already have a MAC, tell to update
+	if(p_Dev->m_message.bUp)
 	{
+	unsigned char sMac[6];
+			memset(sMac,0,6);
+			if(CAddressHelper::GetInterfaceMac(p_Dev->m_message.sDevname,sMac))
+			{
+				p_Dev->SetMac(sMac);
+			}
+	}
+
+	OnDeviceUpdateFull((CIPCMessageDeviceInfo *) p_Dev->Create());
+
+	/*
+	 unsigned char Emptybuf[6];
+	 memset(Emptybuf,0,6);
+
+	 if(memcmp(p_Dev->m_message.MacBuff,Emptybuf,6)!=0)  //if this dev already have a MAC, tell to update
+	 {
 	 OnDeviceUpdateFull(p_Dev);
-	}*/
+	 }*/
 }
 
-void CNetCardMonitor::OnDeviceUpdateFull(CIPCMessageDeviceInfo * p_Dev)
-{
+void CNetCardMonitor::OnDeviceUpdateFull(CIPCMessageDeviceInfo * p_Dev) {
 
 }
 
@@ -125,9 +132,8 @@ bool CNetCardMonitor::ReadDev(__u16 p_nRequestType, int p_nLen) {
 			return false;
 		}
 
-		if (nlmsg_ptr->nlmsg_type == NLMSG_DONE)
-		{
-		//	TRACE("Netlink Message type %d finish\n",p_nRequestType);
+		if (nlmsg_ptr->nlmsg_type == NLMSG_DONE) {
+			//	TRACE("Netlink Message type %d finish\n",p_nRequestType);
 			break;
 		}
 		process_nlmsg(nlmsg_ptr, nlmsg_len);
@@ -151,7 +157,7 @@ void CNetCardMonitor::process_route(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 
 	struct route_info {
 		u_int dstAddr;
-        u_int mask;
+		u_int mask;
 		u_int gateWay;
 
 		char ifName[IF_NAMESIZE];
@@ -197,51 +203,49 @@ void CNetCardMonitor::process_route(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 		}
 	}
 
-	if (bHasGate)
-	{
-	//	TRACE("gate %s mask %s\n",CAddressHelper::IntIP2str(rtInfo.gateWay).c_str(),CAddressHelper::IntIP2str(rtInfo.mask).c_str());
+	if (bHasGate) {
+		//	TRACE("gate %s mask %s\n",CAddressHelper::IntIP2str(rtInfo.gateWay).c_str(),CAddressHelper::IntIP2str(rtInfo.mask).c_str());
 		this->OnNetCardNewGate(rtInfo.ifName, rtInfo.gateWay);
 	}
 }
 
-void CNetCardMonitor::OnNetCardNewAdd(std::string p_sNetcardName, u_int p_nIP, u_int p_nMask) {
+void CNetCardMonitor::OnNetCardNewAdd(std::string p_sNetcardName, u_int p_nIP,
+		u_int p_nMask) {
 
-
-
-	if(CAddressHelper::StrIP2Int("127.0.0.1")==p_nIP) return;
-
+	if (CAddressHelper::StrIP2Int("127.0.0.1") == p_nIP)
+		return;
 
 //	TRACE("%s new add %s mask %s\n", CAddressHelper::IntIP2str(p_nIP).c_str(), p_sNetcardName.c_str(),CAddressHelper::IntIP2str(p_nMask).c_str());
 
 	this->m_lock.lock();
 
-	do
-	{
+	do {
+
+		CIPCMessageDeviceInfo * dev = NULL;
+		auto search = this->m_DevMap.find(p_sNetcardName);
+		if (search != m_DevMap.end()) {
+			dev = search->second;
+		} else {
+			dev =
+					(CIPCMessageDeviceInfo *) CIPCMessageObjectFactory::GetInstance()->Get(
+							IPCMESSAGE_ID_DEVICINFO);
+			if (dev == NULL) {
+				TRACE("Out of memory or outdate version\n");
+				break;
+			}
+			m_DevMap[p_sNetcardName] = dev;
+			dev->SetDevName(p_sNetcardName);
+
+		}
 
 
-	 	  CIPCMessageDeviceInfo * dev=NULL;
-	 	  auto search = this->m_DevMap.find(p_sNetcardName);
-	 	 if(search != m_DevMap.end()) {
-	 		dev=search->second;
-	 	    }
-	 	    else {
-	 	    dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
-	 	    if(dev==NULL)
-	 	    {
-	 	    	TRACE("Out of memory or outdate version\n");
-	 	    break;
-	 	    }
-	 	    m_DevMap[p_sNetcardName]=dev;
-	 	    dev->SetDevName(p_sNetcardName);
-	 	    }
+		dev->SetUpFlag(true);
+		dev->AddIP(p_nIP);
+		dev->SetMask(p_nMask);
+		this->OnDeviceUpdate(dev);
+	} while (false);
 
-	 	 dev->SetUpFlag(CAddressHelper::IsInterfaceUp(p_sNetcardName));
-	 	 dev->AddIP(p_nIP);
-	 	 dev->SetMask(p_nMask);
-	 	this->OnDeviceUpdate(dev);
-	}while(false);
-
-	 	this->m_lock.unlock();
+	this->m_lock.unlock();
 }
 void CNetCardMonitor::OnNetCardNewGate(std::string p_sNetcardName,
 		u_int p_nGate) {
@@ -253,104 +257,102 @@ void CNetCardMonitor::OnNetCardNewGate(std::string p_sNetcardName,
 
 	this->m_lock.lock();
 
-	do
-	{
+	do {
 
-	    CIPCMessageDeviceInfo * dev=NULL;
-	 	 auto search = this->m_DevMap.find(p_sNetcardName);
-	 	 if(search != m_DevMap.end()) {
-	 		dev=search->second;
-	 	    }
-	 	    else {
-	 	    dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
-	 	   if(dev==NULL)
-	 	   	 	    {
-	 	   	 	    	TRACE("Out of memory or outdate version\n");
-	 	   	 	    break;
-	 	   	 	    }
-	 	  m_DevMap[p_sNetcardName]=dev;
-	 	    dev->SetDevName(p_sNetcardName);
-	 	    }
+		CIPCMessageDeviceInfo * dev = NULL;
+		auto search = this->m_DevMap.find(p_sNetcardName);
+		if (search != m_DevMap.end()) {
+			dev = search->second;
+		} else {
+			dev =
+					(CIPCMessageDeviceInfo *) CIPCMessageObjectFactory::GetInstance()->Get(
+							IPCMESSAGE_ID_DEVICINFO);
+			if (dev == NULL) {
+				TRACE("Out of memory or outdate version\n");
+				break;
+			}
+			m_DevMap[p_sNetcardName] = dev;
+			dev->SetDevName(p_sNetcardName);
+		}
 
-	 	dev->SetUpFlag(CAddressHelper::IsInterfaceUp(p_sNetcardName));
-	 	dev->SetRoute(p_nGate);
-	 	this->OnDeviceUpdate(dev);  //Only send update when this dev has been processed by Interfaces or get the interface stat directly.
+		dev->SetUpFlag(true);
+		dev->SetRoute(p_nGate);
+		this->OnDeviceUpdate(dev); //Only send update when this dev has been processed by Interfaces or get the interface stat directly.
 		this->m_lock.unlock();
-	}while(false);
- 	/*if(p_Devs==NULL) return;
- 	CIPCMessageDeviceInfo * dev=NULL;
- 	 auto search = p_Devs->find(p_sNetcardName);
- 	 if(search != p_Devs->end()) {
- 		dev=search->second;
- 	    }
- 	    else {
- 	    dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
- 	   if(dev==NULL)
- 	   	 	    {
- 	   	 	    	TRACE("Out of memory or outdate version\n");
- 	   	 	    return;
- 	   	 	    }
-        (*p_Devs)[p_sNetcardName]=dev;
- 	    dev->SetDevName(p_sNetcardName);
- 	    }
- 	dev->SetRoute(p_nGate);
-*/
+	} while (false);
+	/*if(p_Devs==NULL) return;
+	 CIPCMessageDeviceInfo * dev=NULL;
+	 auto search = p_Devs->find(p_sNetcardName);
+	 if(search != p_Devs->end()) {
+	 dev=search->second;
+	 }
+	 else {
+	 dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
+	 if(dev==NULL)
+	 {
+	 TRACE("Out of memory or outdate version\n");
+	 return;
+	 }
+	 (*p_Devs)[p_sNetcardName]=dev;
+	 dev->SetDevName(p_sNetcardName);
+	 }
+	 dev->SetRoute(p_nGate);
+	 */
 }
 void CNetCardMonitor::OnNetCardNewLink(bool p_bUp, std::string p_sNetcardName,
 		u_char *p_pMac) {
 
 	this->m_lock.lock();
 
+	do {
+		CIPCMessageDeviceInfo * dev = NULL;
+		auto search = m_DevMap.find(p_sNetcardName);
+		if (search != m_DevMap.end()) {
+			dev = search->second;
+			if (!p_bUp)   //if an existing dev goes down, reset it's IP address
+				dev->ResetIP();
+		} else {
+			dev =
+					(CIPCMessageDeviceInfo *) CIPCMessageObjectFactory::GetInstance()->Get(
+							IPCMESSAGE_ID_DEVICINFO);
+			if (dev == NULL) {
+				TRACE("Out of memory or outdate version\n");
+				break;
+			}
+			m_DevMap[p_sNetcardName] = dev;
+			dev->SetDevName(p_sNetcardName);
+		}
 
-	do
-	{
-	CIPCMessageDeviceInfo * dev=NULL;
-	 	 auto search = m_DevMap.find(p_sNetcardName);
-	 	 if(search != m_DevMap.end()) {
-	 		dev=search->second;
-	 		if(!p_bUp)   //if an existing dev goes down, reset it's IP address
-	 			dev->ResetIP();
-	 	    }
-	 	    else {
-	 	    dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
-	 	   if(dev==NULL)
-	 	   	 	    {
-	 	   	 	    	TRACE("Out of memory or outdate version\n");
-	 	   	 	    break;
-	 	   	 	    }
-	 	    m_DevMap[p_sNetcardName]=dev;
-	 	    dev->SetDevName(p_sNetcardName);
-	 	    }
+		dev->SetUpFlag(p_bUp);
+		//  dev->SetUpFlag(CAddressHelper::IsInterfaceUp(p_sNetcardName));
+		dev->SetMac(p_pMac);
 
-	 	 dev->SetUpFlag(p_bUp);
-	 	 dev->SetMac(p_pMac);
-
-	 	 this->OnDeviceUpdate(dev);
-	}while(false);
+		this->OnDeviceUpdate(dev);
+	} while (false);
 
 	this->m_lock.unlock();
 
-/*
-	if(p_Devs==NULL) return;
-	 	CIPCMessageDeviceInfo * dev=NULL;
-	 	 auto search = p_Devs->find(p_sNetcardName);
-	 	 if(search != p_Devs->end()) {
-	 		dev=search->second;
-	 	    }
-	 	    else {
-	 	    dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
-	 	   if(dev==NULL)
-	 	   	 	    {
-	 	   	 	    	TRACE("Out of memory or outdate version\n");
-	 	   	 	    return;
-	 	   	 	    }
-	        (*p_Devs)[p_sNetcardName]=dev;
-	 	    dev->SetDevName(p_sNetcardName);
-	 	    }
+	/*
+	 if(p_Devs==NULL) return;
+	 CIPCMessageDeviceInfo * dev=NULL;
+	 auto search = p_Devs->find(p_sNetcardName);
+	 if(search != p_Devs->end()) {
+	 dev=search->second;
+	 }
+	 else {
+	 dev=(CIPCMessageDeviceInfo *)CIPCMessageObjectFactory::GetInstance()->Get(IPCMESSAGE_ID_DEVICINFO);
+	 if(dev==NULL)
+	 {
+	 TRACE("Out of memory or outdate version\n");
+	 return;
+	 }
+	 (*p_Devs)[p_sNetcardName]=dev;
+	 dev->SetDevName(p_sNetcardName);
+	 }
 
-	 	 dev->SetUpFlag(p_bUp);
-	 	 dev->SetMac(p_pMac);
-*/
+	 dev->SetUpFlag(p_bUp);
+	 dev->SetMac(p_pMac);
+	 */
 
 }
 void CNetCardMonitor::process_if(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
@@ -394,7 +396,9 @@ void CNetCardMonitor::process_if(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 			//	printf("Address len %d ", nLen);
 			if (nLen == 6) {
 
-				if(CAddressHelper::isEmptyMac((unsigned char*) RTA_DATA(rtAttr))) break;
+				if (CAddressHelper::isEmptyMac(
+						(unsigned char*) RTA_DATA(rtAttr)))
+					break;
 				memcpy(ifInfo.sMac, (unsigned char*) RTA_DATA(rtAttr), nLen);
 				std::string s = _helper_Mac_buff2Str(ifInfo.sMac);
 				//printf("mac: %s\n", s.c_str());
@@ -406,35 +410,47 @@ void CNetCardMonitor::process_if(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 		}
 	}
 
+	/*
+	 *
+	 so in short: LINK MONITOR ONLY WORKS FOR BOTH TO CHECK DOWN.
+	 IF_RUNNING seems required on 4.4 above, confirmed.  4.0 below can't use IF_RUNNING.
+	 for 4.4 above
+	 in order to confirm if an interface UP, it need to be UP and Having an Address
+	 it is down, it is !IF_LOWER_UP
 
-	   /*
-	    *
-so in short: LINK MONITOR ONLY WORKS FOR BOTH TO CHECK DOWN.
-IF_RUNNING seems required on 4.4 above, confirmed.  4.0 below can't use IF_RUNNING.
- for 4.4 above
-in order to confirm if an interface UP, it need to be UP and Having an Address
-it is down, it is !IF_LOWER_UP
-
-4.0 below
-if it is UP, when UP and having an address
-in order to confirm if an interface is DOWN, it need to !IF_LOWER_UP ---> for 4.0 below
-	    */
-	ifInfo.bIsUp = ifMsg->ifi_flags & IFF_RUNNING? 1 : 0;
-/*
-	TRACE("%s: ",ifInfo.ifName);
-
-	if(ifMsg->ifi_flags & IFF_LOWER_UP) TRACE("lower_UP ");
-	if(ifMsg->ifi_flags & IFF_RUNNING) TRACE("RUNNING ");
-	if(ifMsg->ifi_flags & IFF_UP) TRACE("UP ");
-	if(ifMsg->ifi_flags & 1<<17) TRACE("IFF_DORMANT ");
-	TRACE("\n");
-*/
-
-	if (bFoundMac)
+	 4.0 below
+	 if it is UP, when UP and having an address
+	 in order to confirm if an interface is DOWN, it need to !IF_LOWER_UP ---> for 4.0 below
+	 */
+	ifInfo.bIsUp = (!(ifMsg->ifi_flags & IFF_LOWER_UP)||!(ifMsg->ifi_flags & IFF_RUNNING)) ? 0 : 1;
+//Sometime system send interface info without if lower up or running, but it is to communicate some other info
+//we just need to check if it has IP, if no IP, then it's down.
+	if (!ifInfo.bIsUp) {
+		DWORD nIP=0;
+		if(CAddressHelper::GetInterfaceIP(ifInfo.ifName,nIP))
+			ifInfo.bIsUp=true;
+	}
+	if(!ifInfo.bIsUp)
 	{
-    		//ifInfo.bIsUp = (ifMsg->ifi_flags & IFF_LOWER_UP && ifMsg->ifi_flags & IFF_RUNNING)? 1 : 0;
+		string s = ifInfo.ifName;
+		if (s == "wlan0") {
+			TRACE("%s: ", ifInfo.ifName);
 
-	 //   TRACE("%s %s\n",ifInfo.ifName,ifInfo.bIsUp ?"ONline":"Offline");
+			if (ifMsg->ifi_flags & IFF_LOWER_UP)
+				TRACE("lower_UP ");
+			if (ifMsg->ifi_flags & IFF_RUNNING)
+				TRACE("RUNNING ");
+			if (ifMsg->ifi_flags & IFF_UP)
+				TRACE("UP ");
+			if (ifMsg->ifi_flags & 1 << 17)
+				TRACE("IFF_DORMANT ");
+			TRACE("\n");
+		}
+	}
+	if (bFoundMac) {
+		//ifInfo.bIsUp = (ifMsg->ifi_flags & IFF_LOWER_UP && ifMsg->ifi_flags & IFF_RUNNING)? 1 : 0;
+
+		//   TRACE("%s %s\n",ifInfo.ifName,ifInfo.bIsUp ?"ONline":"Offline");
 
 		this->OnNetCardNewLink(ifInfo.bIsUp, ifInfo.ifName, ifInfo.sMac);
 	}
@@ -474,9 +490,7 @@ void CNetCardMonitor::process_add(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 			case AF_INET:
 				/* Size must match that of an address for IPv4.  */
 
-
-				if (rta_payload == 4)
-				{
+				if (rta_payload == 4) {
 					memcpy(&ifadd.nIP, RTA_DATA(rtattr_ptr), rta_payload);
 				}
 				break;
@@ -492,25 +506,24 @@ void CNetCardMonitor::process_add(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 		}
 	}
 
-	    int fd;
-		DWORD nMask = 0;
-		struct ifreq ifr;
+	int fd;
+	DWORD nMask = 0;
+	struct ifreq ifr;
 
-		fd = socket(AF_INET, SOCK_DGRAM, 0);
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
 
-		if (-1 == fd) {
-			return;
-		}
+	if (-1 == fd) {
+		return;
+	}
 
-		ifr.ifr_addr.sa_family = AF_INET;
+	ifr.ifr_addr.sa_family = AF_INET;
 
-		strncpy(ifr.ifr_name, ifadd.ifName, IFNAMSIZ - 1);
-    	ioctl(fd, SIOCGIFNETMASK, &ifr);
-		nMask = ((struct sockaddr_in *) &ifr.ifr_netmask)->sin_addr.s_addr;
-		close(fd);
+	strncpy(ifr.ifr_name, ifadd.ifName, IFNAMSIZ - 1);
+	ioctl(fd, SIOCGIFNETMASK, &ifr);
+	nMask = ((struct sockaddr_in *) &ifr.ifr_netmask)->sin_addr.s_addr;
+	close(fd);
 
 	this->OnNetCardNewAdd(ifadd.ifName, ifadd.nIP, nMask);
-
 
 }
 
@@ -528,15 +541,15 @@ bool CNetCardMonitor::process_nlmsg(struct nlmsghdr *nlmsg_ptr, int nlmsg_len) {
 		}
 
 		if (nlmsg_ptr->nlmsg_type == RTM_NEWROUTE) {
-		//	TRACE("Monitor New route message %s\n",p_Devs==NULL?"thread":"caller");
+			//	TRACE("Monitor New route message %s\n",p_Devs==NULL?"thread":"caller");
 			process_route(nlmsg_ptr, nlmsg_len);
 		}
 		if (nlmsg_ptr->nlmsg_type == RTM_NEWADDR) {
-		//TRACE("Monitor New IP message %s\n",p_Devs==NULL?"thread":"caller");
+			//TRACE("Monitor New IP message %s\n",p_Devs==NULL?"thread":"caller");
 			process_add(nlmsg_ptr, nlmsg_len);
 		}
 		if (nlmsg_ptr->nlmsg_type == RTM_NEWLINK) {
-		//	TRACE("Monitor New Link message %s\n",p_Devs==NULL?"thread":"caller");
+			//	TRACE("Monitor New Link message %s\n",p_Devs==NULL?"thread":"caller");
 			process_if(nlmsg_ptr, nlmsg_len);
 
 		}

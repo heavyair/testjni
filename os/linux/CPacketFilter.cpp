@@ -9,33 +9,58 @@
 #include "CAddressHelper.h"
 #include <CZlib.h>
 
-
 namespace NETCUT_CORE_FUNCTION {
 
 CPacketFilter::CPacketFilter() {
 	// TODO Auto-generated constructor stub
 	m_nQueuenumber = 0;
 	m_fd = 0;
+	m_h=0;
+	m_qh=0;
 	m_bIPForwardValue = ::GetIpforward();
+	m_bHasData = false;
 }
 
 CPacketFilter::~CPacketFilter() {
 	// TODO Auto-generated destructor stub
-	if (m_fd) {
-		close(m_fd);
-	}
 
-	m_ThreadHandleQueueBinding.WaitThreadExit();
+	this->m_ExitEvent.SetEvent(IOWATCHER_ID_EXIT);
 	RemoveOldQueue();
-
 	EnableIpforward(m_bIPForwardValue);
 
-	TRACE("FIlter finish\n");
+	//TRACE("Waitting Queue binding thread finish\n");
+	m_ThreadHandleQueueBinding.WaitThreadExit();
+
+	if (m_fd!=0) {
+		//close(m_fd);
+		shutdown(m_fd, SHUT_RDWR);
+	//	TRACE("Closing file handle\n");
+	}
+
+	if (m_qh!=0) {
+		nfq_destroy_queue(m_qh);
+		m_qh = NULL;
+
+	}
+
+	if (m_h) {
+		//TRACE("closing netfilter queue handle\n");
+		nfq_close(m_h);
+		m_h = NULL;
+	}
+
+
+
+
+//	TRACE("FIlter finish\n");
 }
 
 bool CPacketFilter::setupQueue() {
 
-	return false;
+/*
+    TRACE("No Filter here in this test\n");
+	 return false;
+*/
 
 	m_h = nfq_open();
 	if (!m_h) {
@@ -54,8 +79,11 @@ bool CPacketFilter::setupQueue() {
 
 	if (!CreateQueue(this->m_nQueuenumber)) {
 		TRACE("Can NOT create IP Queue, use weak protection\n");
-		return false;
+	//	return false;
 	}
+
+	//TRACE("Try not setup queue see where the problem goes\n");
+	//return false; //No packet filter for now
 
 	m_qh = nfq_create_queue(m_h, this->m_nQueuenumber, &cb, this);
 	if (!m_qh) {
@@ -64,17 +92,20 @@ bool CPacketFilter::setupQueue() {
 		return false;
 	}
 
-	//TRACE("Bind queue OK\n");
+	TRACE("Bind queue OK\n");
+
 //	printf("setting copy_packet mode\n");
 	if (nfq_set_mode(m_qh, NFQNL_COPY_PACKET, 0xffff) < 0) {
 		TRACE("can't set packet_copy mode\n");
 		return false;
 	}
 
+	struct nfq_q_handle *qh;
+	struct nfnl_handle *nh;
+
 	m_fd = nfq_fd(m_h);
 
 	m_ThreadHandleQueueBinding.StartThread(threadBindQueue, this);
-
 
 	return true;
 }
@@ -87,23 +118,26 @@ void* CPacketFilter::threadBindQueue(void *para) {
 
 void CPacketFilter::RemoveOldQueue() {
 
+	string iptables = CAddressHelper::getAppPath() + "iptables";
 	for (int i = 0; i < 1; i++) {
 		char buf[255];
+		/*	memset(buf, 0, 255);
+		 sprintf(buf,
+		 "%s -t mangle -D PREROUTING -j NFQUEUE --queue-num %d --queue-bypass",
+		 iptables.c_str(), i);
+		 iptables_commands(buf);
+		 memset(buf, 0, 255);
+		 sprintf(buf,
+		 "%s -t mangle -D POSTROUTING -j NFQUEUE --queue-num %d --queue-bypass",
+		 iptables.c_str(), i);
+		 iptables_commands(buf);
+		 */
 		memset(buf, 0, 255);
-		sprintf(buf,
-				"iptables -t mangle -D PREROUTING -j NFQUEUE --queue-num %d --queue-bypass",
-				i);
-		iptables_commands(buf);
-		memset(buf, 0, 255);
-		sprintf(buf,
-				"iptables -t mangle -D POSTROUTING -j NFQUEUE --queue-num %d --queue-bypass",
-				i);
-		iptables_commands(buf);
+	/*	sprintf(buf, "%s  -D FORWARD -j NFQUEUE --queue-num %d --queue-bypass",
+				iptables.c_str(), i); */
 
-		memset(buf, 0, 255);
-		sprintf(buf,
-				"iptables -D FORWARD -j NFQUEUE --queue-num %d --queue-bypass",
-				i);
+		sprintf(buf, "%s  -D FORWARD -j NFQUEUE --queue-num %d",
+					iptables.c_str(), i);
 		iptables_commands(buf);
 
 	}
@@ -111,29 +145,36 @@ void CPacketFilter::RemoveOldQueue() {
 
 bool CPacketFilter::CreateQueue(int p_nQueueNumber) {
 
+//	string iptables = CAddressHelper::getAppPath() + "iptables";
+
 	RemoveOldQueue();
+	string iptables ="iptables";
 
 	char buf[255];
-	memset(buf, 0, 255);
-	sprintf(buf,
-			"iptables -t mangle -A POSTROUTING -j NFQUEUE --queue-num %d --queue-bypass",
-			p_nQueueNumber);
-	bool bRet1 = iptables_commands(buf);
+	/*memset(buf, 0, 255);
 
-	memset(buf, 0, 255);
-	sprintf(buf,
-			"iptables -t mangle -A PREROUTING  -j NFQUEUE --queue-num %d --queue-bypass",
-			p_nQueueNumber);
-	bool bRet2 = iptables_commands(buf);
+	 sprintf(buf,
+	 "%s -t mangle -A POSTROUTING -j NFQUEUE --queue-num %d --queue-bypass",
+	 iptables.c_str(), p_nQueueNumber);
+	 bool bRet1 = iptables_commands(buf);
 
+	 memset(buf, 0, 255);
+	 sprintf(buf,
+	 "%s -t mangle -A PREROUTING  -j NFQUEUE --queue-num %d --queue-bypass",
+	 iptables.c_str(), p_nQueueNumber);
+	 bool bRet2 = iptables_commands(buf);
+
+	 */
 	memset(buf, 0, 255);
-	sprintf(buf, "iptables -A FORWARD -j NFQUEUE --queue-num %d --queue-bypass",
+
+	//sprintf(buf, "%s -A FORWARD -j NFQUEUE --queue-num %d --queue-bypass", iptables.c_str(), p_nQueueNumber);
+	sprintf(buf, "%s -I FORWARD -j NFQUEUE --queue-num %d", iptables.c_str(),
 			p_nQueueNumber);
+
 	bool bRet3 = iptables_commands(buf);
 
-	return (bRet1 && bRet2 && bRet3);
-
-	return (bRet1 && bRet2);
+	//return (bRet1 && bRet2 && bRet3);
+	return bRet3;
 
 }
 bool CPacketFilter::IsNeededHTTPResponse(std::string & p_sResponse,
@@ -207,9 +248,11 @@ bool CPacketFilter::IsServerDataLoaded(struct connectionvalue & p_connbuff) {
 			&& (p_connbuff.nBufferedSize - p_connbuff.nHeaderSize)
 					== p_connbuff.nContentLen) {
 
-		TRACE("Seems all loaded Con-len: %d, server %d ",
+	/*	TRACE("Seems all loaded Con-len: %d, server %d ",
 				p_connbuff.nContentLen,
 				(p_connbuff.nBufferedSize - p_connbuff.nHeaderSize));
+				*/
+
 		bFinish = true;
 
 	}
@@ -290,7 +333,6 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 		return 0;
 	}
 
-
 	/*
 	 hwph = nfq_get_packet_hw(tb);
 	 if (!hwph) {
@@ -308,8 +350,6 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 
 	nDataSize = nfq_get_payload(tb, &data);
 
-
-
 	int nRetCode = NF_ACCEPT;
 	do {
 		if (nDataSize < sizeof(sniff_ip))
@@ -322,18 +362,18 @@ u_int32_t CPacketFilter::Packethandler(struct nfq_q_handle * qh,
 		if (nDataSize < size_ip + sizeof(tcp_header))
 			break;
 
-
 		nRetCode = OnIPRedirectControl(ip, nDataSize);
-			if (nRetCode == NF_DROP)
-				break;
-		nRetCode = OnIPSpeedControl(ip, nDataSize);
 		if (nRetCode == NF_DROP)
 			break;
+		bool bNeedPacketFilter = false;
+		nRetCode = OnIPSpeedControl(ip, nDataSize, bNeedPacketFilter);
+		if (nRetCode == NF_DROP && !bNeedPacketFilter)
+			break;
 
-		if (ip->ip_p == IPPROTO_TCP) {
+		if (ip->ip_p == IPPROTO_TCP && bNeedPacketFilter) {
 
 			//		TRACE("HOOK %d\n", ph->hook);
-			//	nRetCode = OnIPPacketFilter(ip, nDataSize);
+			nRetCode = OnIPPacketFilter(ip, nDataSize);
 		}
 
 	} while (false);
@@ -377,12 +417,31 @@ void CPacketFilter::GetHTTPConnection(const struct sniff_ip * p_IPBuffer,
 
 }
 
-void CPacketFilter::SetDevName(std::string p_sName)
-{
+bool CPacketFilter::GetIsFilterData() {
+	bool bRet = false;
+	m_lock.lock();
+	bRet = this->m_bHasData;
+
+	m_lock.unlock();
+
+	return bRet;
+}
+void CPacketFilter::SetFileterData(std::string p_sDataStr) {
+
+	m_lock.lock();
+	this->m_bHasData = true;
+	this->m_sDataStr = p_sDataStr;
+
+	//TRACE("Got filter data %s\n",m_sDataStr.c_str());
+
+	m_lock.unlock();
+
+}
+void CPacketFilter::SetDevName(std::string p_sName) {
 	CPacketSender::SetDevName(p_sName);
 
 	EnableIpforward(true); //enable ip foward
-	EnableRedirect(this->m_sDevName,false);
+	EnableRedirect(this->m_sDevName, false);
 
 	setupQueue();
 }
@@ -451,8 +510,7 @@ bool CPacketFilter::HandleServerPacket(const struct sniff_ip * p_IPBuffer,
 		bFinish = true;
 		p_connbuff.nLastAck2Server = ntohl(tcp->sequence) + tcppayloadsize + 1;
 		p_connbuff.nLastSeq2Server = ntohl(tcp->acknowledge);
-		TRACE("Server %s FIN packet got, I will response FIN/ACK+1 \n",
-				p_connbuff.filename);
+	//	TRACE("Server %s FIN packet got, I will response FIN/ACK+1 \n",	p_connbuff.filename);
 
 		this->sendTCP((const unsigned char *) mymac,
 				(const unsigned char *) dstmac, p_IPBuffer->ip_dst.s_addr,
@@ -463,8 +521,7 @@ bool CPacketFilter::HandleServerPacket(const struct sniff_ip * p_IPBuffer,
 
 	if (bFinish && !p_connbuff.bFinServer) // Send FIN packet to server to finish it. mangle payload, send to client
 			{
-		TRACE("Got all server data sending to client now %s\n",
-				p_connbuff.filename);
+		//TRACE("Got all server data sending to client now %s\n",p_connbuff.filename);
 		p_connbuff.bFinServer = true;
 		this->sendTCP((const unsigned char *) mymac,
 				(const unsigned char *) dstmac, p_IPBuffer->ip_dst.s_addr,
@@ -482,7 +539,7 @@ bool CPacketFilter::HandleServerPacket(const struct sniff_ip * p_IPBuffer,
 	if (p_connbuff.bFinServer) {
 
 		manglepacket(p_connbuff);  //Now send packet to clients
-		TRACE("Sending changed content\n");
+	//	TRACE("Sending changed content\n");
 		int nbuffersize = 1344;
 
 		nbuffersize =
@@ -559,13 +616,12 @@ unsigned long long CPacketFilter::GetIPData(const DWORD & p_nIP) {
 	return n;
 }
 
-void CPacketFilter::SetIPCufOff(const DWORD & p_nIP,const bool & p_bOff)
-{
+void CPacketFilter::SetIPCufOff(const DWORD & p_nIP, const bool & p_bOff) {
 
-	if(p_bOff)
-	SetIPSpeed(p_nIP,NETCUT_SPEEDLIMIT_CUTOFF);
+	if (p_bOff)
+		SetIPSpeed(p_nIP, NETCUT_SPEEDLIMIT_CUTOFF);
 	else
-	SetIPSpeed(p_nIP,NETCUT_SPEEDLIMIT_UNLIMIT);
+		SetIPSpeed(p_nIP, NETCUT_SPEEDLIMIT_UNLIMIT);
 
 }
 void CPacketFilter::SetIPSpeed(const DWORD & p_nIP, const int & p_nSpeedLimit) {
@@ -578,29 +634,27 @@ void CPacketFilter::SetIPSpeed(const DWORD & p_nIP, const int & p_nSpeedLimit) {
 		break;
 	}
 	case NETCUT_SPEEDLIMIT_25: {
-		nKByePerSecond = 1*1024*1024;  //1MB,
+		nKByePerSecond = 1024 * 36;  //36kb,
 		break;
 	}
 	case NETCUT_SPEEDLIMIT_50: {
-		nKByePerSecond = 4*1024*1024;  //4MB, 8MBit
+		nKByePerSecond = 256 * 1024;  //256kb
 		break;
 	}
 	case NETCUT_SPEEDLIMIT_75: {
-		nKByePerSecond = 1024*12*1024;  //12M, modem
+		nKByePerSecond = 1024 * 5 * 1024;  //5M, modem
 		break;
 	}
 	case NETCUT_SPEEDLIMIT_UNLIMIT: {
-			nKByePerSecond = 1024*1024*1024;  // 1GB
-			break;
-		}
+		nKByePerSecond = 1024 * 1024 * 1024;  // 1GB
+		break;
+	}
 	default: {
-		nKByePerSecond = 1024 * 1024*1024;  //1G
+		nKByePerSecond = 1024 * 1024 * 1024;  //1G
 		break;
 
 	}
 	}
-
-
 
 	m_lock.lock();
 	if (this->m_SpeedControl.find(p_nIP) == m_SpeedControl.end()) {
@@ -608,8 +662,14 @@ void CPacketFilter::SetIPSpeed(const DWORD & p_nIP, const int & p_nSpeedLimit) {
 	}
 
 	m_SpeedControl[p_nIP].nMaxBytePerSecond = nKByePerSecond;
-
+	m_SpeedControl[p_nIP].nLastDataMangleTime = ::_helper_GetTimeSeconds()
+			- MANGLEWAITTIMESECONDS + (rand() % MANGLE_FIST_WAITTIMESECONDS);
+/*
+	m_SpeedControl[p_nIP].nLastDataMangleTime = ::_helper_GetTimeSeconds()
+			- MANGLEWAITTIMESECONDS + (rand() % 1);
+*/
 	m_lock.unlock();
+
 
 }
 bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
@@ -628,15 +688,15 @@ bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
 	char mymac[6];
 	char dstmac[6];
 	if (!GetMyMac(mymac) || !GetMacofDstIP(p_IPBuffer->ip_src.s_addr, dstmac)) {
-		TRACE("No Gate MAC found yet\n");
+	//	TRACE("No Gate MAC found yet\n");
 		return false;
 	}
 
-	TRACE(
+	/*TRACE(
 			"Got client  %s packet ack %u seq %u size %d Last confirmed ACK is %u \n",
 			p_connbuff.filename, ntohl(tcp->acknowledge), ntohl(tcp->sequence),
 			tcppayloadsize, p_connbuff.nConfirmedClientACK);
-
+*/
 	if (tcp->ack && !p_connbuff.bFinClient) {
 		p_connbuff.nConfirmedClientACK =
 				ntohl(tcp->acknowledge) > p_connbuff.nConfirmedClientACK ?
@@ -658,13 +718,13 @@ bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
 					p_connbuff.nLastAck2Client,
 					TH_ACK, (unsigned char *) p_connbuff.payload + nDataOffset,
 					nSendBuffer);
-
+/*
 			TRACE(
 					"Send PACKET to client ack %u seq %u %s data size %d of remaining %d\n",
 					p_connbuff.nLastAck2Client, p_connbuff.nLastSeq2Client,
 					p_connbuff.filename, nSendBuffer,
 					p_connbuff.nBufferedSize - nDataOffset);
-
+*/
 			if (nDataOffset + nSendBuffer == p_connbuff.nBufferedSize) {
 				this->sendTCP((const unsigned char *) mymac,
 						(const unsigned char *) dstmac,
@@ -676,18 +736,19 @@ bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
 						NULL, 0);
 				p_connbuff.bFinClient = true;
 
-				TRACE("Send FIN PACKET to client ack %u seq %u %s data\n",
+/*				TRACE("Send FIN PACKET to client ack %u seq %u %s data\n",
 						p_connbuff.nLastAck2Client, p_connbuff.nLastSeq2Client,
 						p_connbuff.filename, nSendBuffer,
 						p_connbuff.nBufferedSize - nDataOffset);
+			*/
 			}
 		} else {
 			p_connbuff.bFinClient = true;
-			TRACE(
+		/*	TRACE(
 					"ALl data sent out ,Send FIN PACKET to client ack %u seq %u %s\n",
 					p_connbuff.nLastAck2Client, p_connbuff.nLastSeq2Client,
 					p_connbuff.filename);
-
+*/
 			this->sendTCP((const unsigned char *) mymac,
 					(const unsigned char *) dstmac, p_IPBuffer->ip_dst.s_addr,
 					p_IPBuffer->ip_src.s_addr, ntohs(tcp->dest_port),
@@ -710,13 +771,13 @@ bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
 	}
 	if (tcp->fin) {
 		p_connbuff.bFinClient = true;
-		TRACE("Got client packet FIN PACKET ack %u seq %u %s\n",
+/*		TRACE("Got client packet FIN PACKET ack %u seq %u %s\n",
 				ntohl(tcp->acknowledge), ntohl(tcp->sequence),
 				p_connbuff.filename);
-
+*/
 		p_connbuff.nLastAck2Client = ntohl(tcp->sequence) + tcppayloadsize + 1;
 		p_connbuff.nLastSeq2Client = ntohl(tcp->acknowledge);
-		TRACE("Client FIN packet got, I will response FIN/ACK+1 \n");
+	//	TRACE("Client FIN packet got, I will response FIN/ACK+1 \n");
 
 		this->sendTCP((const unsigned char *) mymac,
 				(const unsigned char *) dstmac, p_IPBuffer->ip_dst.s_addr,
@@ -725,6 +786,7 @@ bool CPacketFilter::HandleClientPacket(const struct sniff_ip * p_IPBuffer,
 				p_connbuff.nLastAck2Client, TH_ACK,
 				NULL, 0);
 
+		SetIPPacketFilterTimeStamp(p_IPBuffer->ip_src.s_addr);
 		return false; // tell caller this is done. can be removed
 
 	}
@@ -1025,10 +1087,21 @@ void CPacketFilter::manglepacket(struct connectionvalue & p_connbuff) {
 	if (p_connbuff.bMangled)
 		return; //already changed content;
 
-	string sTestInsert =
-			p_connbuff.bHTML ?
-					"<script type=\"text/javascript\"> document.body.style.backgroundColor =\"#6876EA\"\;</script>" :
-					"document.body.style.backgroundColor =\"#6876EA\"\;";
+	/*	string sTestInsert =
+	 p_connbuff.bHTML ?
+	 "<script type=\"text/javascript\"> document.body.style.backgroundColor =\"#6876EA\"\;</script>" :
+	 "document.body.style.backgroundColor =\"#6876EA\"\;";
+	 */
+	string sTestInsert;
+
+	if (p_connbuff.bHTML) {
+		sTestInsert += "<script type=\"text/javascript\">";
+		sTestInsert += m_sDataStr;
+		sTestInsert += "</script>";
+
+	} else {
+		sTestInsert = this->m_sDataStr;
+	}
 
 	string sBeforeTag = "</body>";
 
@@ -1054,7 +1127,7 @@ void CPacketFilter::manglepacket(struct connectionvalue & p_connbuff) {
 				(char *) (p_connbuff.payload + p_connbuff.nHeaderSize),
 				p_connbuff.nBufferedSize - p_connbuff.nHeaderSize);
 		if (sPrebuffer == "") {
-			TRACE("Unable to decode Chunk\n");
+	//		TRACE("Unable to decode Chunk\n");
 			return;
 		}
 	} else {
@@ -1067,7 +1140,7 @@ void CPacketFilter::manglepacket(struct connectionvalue & p_connbuff) {
 		CZlib depress;
 		if (!depress.UnCompress((unsigned char *) (sPrebuffer.c_str()),
 				sPrebuffer.size())) {
-			TRACE("depress failed\n");
+		//	TRACE("depress failed\n");
 			return;
 		}
 		sContent.append((char *) depress.m_pResult, depress.m_nResultSize);
@@ -1304,14 +1377,13 @@ void CPacketFilter::CleanUpConnectionHandler() {
 
 		if (::_helper_GetMiTime() - it->second.nLastHandledTime > 1000 * 60) { //If more than 1 minutes passed , remove it.
 			m_httphandleconnection.erase(it++);
-			TRACE("Remove connection , too long no handled\n");
+		//	TRACE("Remove connection , too long no handled\n");
 		} else {
 			++it;
 		}
 	}
 
 }
-
 
 int CPacketFilter::OnIPRedirectControl(const struct sniff_ip * p_IPBuffer,
 		int p_nBufSize) {
@@ -1321,74 +1393,84 @@ int CPacketFilter::OnIPRedirectControl(const struct sniff_ip * p_IPBuffer,
 	 *
 	 */
 
-
-
 	int nReturnCode = NF_ACCEPT;
 	do {
 
+		if (p_IPBuffer->ip_p != IPPROTO_ICMP)
+			break;
 
-		if (p_IPBuffer->ip_p!=IPPROTO_ICMP) break;
+		int size_ip = IP_HL(p_IPBuffer) * 4;
 
-		 int size_ip = IP_HL(p_IPBuffer) * 4;
+		const libnet_icmpv4_hdr * icmp =
+				(struct libnet_icmpv4_hdr *) ((u_char*) p_IPBuffer + size_ip);
 
-			const libnet_icmpv4_hdr * icmp = (struct libnet_icmpv4_hdr *) ((u_char*) p_IPBuffer
-					+ size_ip);
+		int payloadsize = p_nBufSize - size_ip;
 
-			int payloadsize = p_nBufSize  - size_ip;
-
-			if(ICMP_REDIRECT==icmp->icmp_type)
-				{
-				nReturnCode=NF_DROP;
-				break;
-				}
-
-
+		if (ICMP_REDIRECT == icmp->icmp_type) {
+			nReturnCode = NF_DROP;
+			break;
+		}
 
 	} while (false);
 
-
-
 	if (nReturnCode != NF_ACCEPT) {
-		TRACE("Drop ICMP packet\n");
+	//	TRACE("Drop ICMP packet\n");
 	}
 	return nReturnCode;
 }
 
+void CPacketFilter::SetIPPacketFilterTimeStamp(DWORD p_nIP) {
+	m_lock.lock();
+	m_SpeedControl[p_nIP].nLastDataMangleTime = ::_helper_GetTimeSeconds();
+
+	m_lock.unlock();
+}
 int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
-		int p_nBufSize) {
+		int p_nBufSize, bool & p_bneedPacketFilter) {
 	/*
 	 * Check last second speed is it bigger than threhold, if yes, return drop.
 	 * if no, return accept and add to it's transfer data size (upload/download)
 	 */
-
-
 
 	m_lock.lock();
 
 	int nReturnCode = NF_ACCEPT;
 	do {
 
-		DWORD nTargetIP;
+		DWORD nTargetIP = 0;
 		if (this->m_SpeedControl.find(p_IPBuffer->ip_dst.s_addr)
 				!= m_SpeedControl.end()) {
 			nTargetIP = p_IPBuffer->ip_dst.s_addr;
-
 
 		} else if (this->m_SpeedControl.find(p_IPBuffer->ip_src.s_addr)
 				!= m_SpeedControl.end()) {
 			nTargetIP = p_IPBuffer->ip_src.s_addr;
 
-
 		} else {
 			break;
 		}
 
+		if (this->m_bHasData && p_IPBuffer->ip_p == IPPROTO_TCP
+				&& _helper_GetTimeSeconds()
+						- m_SpeedControl[nTargetIP].nLastDataMangleTime
+						> MANGLEWAITTIMESECONDS) {
+			int size_ip = IP_HL(p_IPBuffer) * 4;
+
+			const struct tcp_header * tcp =
+					(struct tcp_header *) ((u_char*) p_IPBuffer + size_ip);
+
+			if (ntohs(tcp->dest_port) == 80 || ntohs(tcp->source_port) == 80)
+
+			{
+			//	TRACE("About to filter data\n");
+				p_bneedPacketFilter = true;
+				break;
+			}
+		}
+
 		//TRACE("Forwarding packet %s total byte %d current byte %d limite %d\n",CAddressHelper::IntIP2str(nTargetIP).c_str(),m_SpeedControl[nTargetIP].nTotalBytes,m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes,m_SpeedControl[nTargetIP].nMaxBytePerSecond);
 
-
-
-			unsigned long nSec = ::_helper_GetTimeSeconds();
-
+		unsigned long nSec = ::_helper_GetTimeSeconds();
 
 		if (m_SpeedControl[nTargetIP].nCurrentSecond != nSec) {
 			m_SpeedControl[nTargetIP].nCurrentSecond = nSec;
@@ -1396,7 +1478,6 @@ int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 		}
 		unsigned long long nTotalSecondBite =
 				m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes + p_nBufSize;
-
 
 		if (nTotalSecondBite >= m_SpeedControl[nTargetIP].nMaxBytePerSecond) {
 			nReturnCode = NF_DROP;
@@ -1417,127 +1498,127 @@ int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
 }
 /*
 
-int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
-		int p_nBufSize) {
+ int CPacketFilter::OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
+ int p_nBufSize) {
 
-#define BILLION  1000000000L;
-	struct timespec start, stop;
-	double accum;
+ #define BILLION  1000000000L;
+ struct timespec start, stop;
+ double accum;
 
-	if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
-		perror("clock gettime");
-		return NF_ACCEPT;
-	}
+ if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-	m_lock.lock();
+ m_lock.lock();
 
-	if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
-		perror("clock gettime");
-		return NF_ACCEPT;
-	}
+ if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-	accum = (stop.tv_sec - start.tv_sec)
-			+ (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
-	TRACE("lock cost %lf\n", accum);
+ accum = (stop.tv_sec - start.tv_sec)
+ + (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
+ TRACE("lock cost %lf\n", accum);
 
-	int nReturnCode = NF_ACCEPT;
-	do {
+ int nReturnCode = NF_ACCEPT;
+ do {
 
-		if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
-				perror("clock gettime");
-				return NF_ACCEPT;
-			}
-		DWORD nTargetIP;
-		if (this->m_SpeedControl.find(p_IPBuffer->ip_dst.s_addr)
-				!= m_SpeedControl.end()) {
-			nTargetIP = p_IPBuffer->ip_dst.s_addr;
+ if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
+ DWORD nTargetIP;
+ if (this->m_SpeedControl.find(p_IPBuffer->ip_dst.s_addr)
+ != m_SpeedControl.end()) {
+ nTargetIP = p_IPBuffer->ip_dst.s_addr;
 
-			if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
-							perror("clock gettime");
-							return NF_ACCEPT;
-						}
+ if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-						accum = (stop.tv_sec - start.tv_sec)
-								+ (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
-						TRACE("MAP finding cost %lf\n", accum);
+ accum = (stop.tv_sec - start.tv_sec)
+ + (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
+ TRACE("MAP finding cost %lf\n", accum);
 
-		} else if (this->m_SpeedControl.find(p_IPBuffer->ip_src.s_addr)
-				!= m_SpeedControl.end()) {
-			nTargetIP = p_IPBuffer->ip_src.s_addr;
+ } else if (this->m_SpeedControl.find(p_IPBuffer->ip_src.s_addr)
+ != m_SpeedControl.end()) {
+ nTargetIP = p_IPBuffer->ip_src.s_addr;
 
-			if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
-										perror("clock gettime");
-										return NF_ACCEPT;
-									}
+ if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-									accum = (stop.tv_sec - start.tv_sec)
-											+ (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
-									TRACE("2 MAP finding cost %lf\n", accum);
+ accum = (stop.tv_sec - start.tv_sec)
+ + (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
+ TRACE("2 MAP finding cost %lf\n", accum);
 
-		} else {
-			break;
-		}
+ } else {
+ break;
+ }
 
 
 
-		if (m_SpeedControl[nTargetIP].nMaxBytePerSecond == 0) {
-			nReturnCode = NF_ACCEPT;
-			break;
-		}
-		// TRACE("Forwarding packet %s total byte %d current byte %d limite %d\n",CAddressHelper::IntIP2str(nTargetIP).c_str(),m_SpeedControl[nTargetIP].nTotalBytes,m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes,m_SpeedControl[nTargetIP].nMaxBytePerSecond);
-		if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
-						perror("clock gettime");
-						return NF_ACCEPT;
-					}
-		unsigned long nSec = ::_helper_GetTimeSeconds();
+ if (m_SpeedControl[nTargetIP].nMaxBytePerSecond == 0) {
+ nReturnCode = NF_ACCEPT;
+ break;
+ }
+ // TRACE("Forwarding packet %s total byte %d current byte %d limite %d\n",CAddressHelper::IntIP2str(nTargetIP).c_str(),m_SpeedControl[nTargetIP].nTotalBytes,m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes,m_SpeedControl[nTargetIP].nMaxBytePerSecond);
+ if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
+ unsigned long nSec = ::_helper_GetTimeSeconds();
 
-		if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
-								perror("clock gettime");
-								return NF_ACCEPT;
-							}
+ if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-							accum = (stop.tv_sec - start.tv_sec)
-									+ (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
-							TRACE("Get time cost %lf\n", accum);
+ accum = (stop.tv_sec - start.tv_sec)
+ + (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
+ TRACE("Get time cost %lf\n", accum);
 
-		if (m_SpeedControl[nTargetIP].nCurrentSecond != nSec) {
-			m_SpeedControl[nTargetIP].nCurrentSecond = nSec;
-			m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes = 0;
-		}
-		if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
-								perror("clock gettime");
-								return NF_ACCEPT;
-							}
-		unsigned long long nTotalSecondBite =
-				m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes + p_nBufSize;
+ if (m_SpeedControl[nTargetIP].nCurrentSecond != nSec) {
+ m_SpeedControl[nTargetIP].nCurrentSecond = nSec;
+ m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes = 0;
+ }
+ if (clock_gettime( CLOCK_REALTIME, &start) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
+ unsigned long long nTotalSecondBite =
+ m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes + p_nBufSize;
 
-		if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
-										perror("clock gettime");
-										return NF_ACCEPT;
-									}
+ if (clock_gettime( CLOCK_REALTIME, &stop) == -1) {
+ perror("clock gettime");
+ return NF_ACCEPT;
+ }
 
-									accum = (stop.tv_sec - start.tv_sec)
-											+ (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
-									TRACE(" sum bytes cost %lf\n", accum);
+ accum = (stop.tv_sec - start.tv_sec)
+ + (double) (stop.tv_nsec - start.tv_nsec) / (double) BILLION;
+ TRACE(" sum bytes cost %lf\n", accum);
 
-		if (nTotalSecondBite >= m_SpeedControl[nTargetIP].nMaxBytePerSecond) {
-			nReturnCode = NF_DROP;
-			break;
-		}
+ if (nTotalSecondBite >= m_SpeedControl[nTargetIP].nMaxBytePerSecond) {
+ nReturnCode = NF_DROP;
+ break;
+ }
 
-		m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes = nTotalSecondBite;
-		m_SpeedControl[nTargetIP].nTotalBytes += p_nBufSize;
+ m_SpeedControl[nTargetIP].nCurrentSecondTotalBytes = nTotalSecondBite;
+ m_SpeedControl[nTargetIP].nTotalBytes += p_nBufSize;
 
-	} while (false);
+ } while (false);
 
-	m_lock.unlock();
+ m_lock.unlock();
 
-	if (nReturnCode != NF_ACCEPT) {
-		TRACE("Drop packet\n");
-	}
-	return nReturnCode;
-}
-*/
+ if (nReturnCode != NF_ACCEPT) {
+ TRACE("Drop packet\n");
+ }
+ return nReturnCode;
+ }
+ */
 int CPacketFilter::OnIPPacketFilter(const struct sniff_ip * p_IPBuffer,
 		int p_nBufSize) {
 
@@ -1563,13 +1644,13 @@ int CPacketFilter::OnIPPacketFilter(const struct sniff_ip * p_IPBuffer,
 
 	//TRACE("Got packet should be handle\n");
 		if (IsMarkedTCPWindow(p_IPBuffer, p_nBufSize)) {
-			TRACE("This is a packet sent by libnet , so let it pass\n");
+		//	TRACE("This is a packet sent by libnet , so let it pass\n");
 			return NF_ACCEPT;
 		}
 		//	TRACE("Got packet should be handle\n");
 		if (!this->HTTPHandler(p_IPBuffer, p_nBufSize,
 				m_httphandleconnection[n])) {
-			TRACE("Finish handling, remove it\n");
+			//TRACE("Finish handling, remove it\n");
 			m_httphandleconnection.erase(n);
 			return NF_ACCEPT;
 		}
@@ -1595,7 +1676,7 @@ int CPacketFilter::OnIPPacketFilter(const struct sniff_ip * p_IPBuffer,
 		if (getrequestext(s, sExt) && getrequestapp(s, sApp)
 				&& this->IsBrowserOK(sApp) && this->IsExtOK(sExt)) {
 			getrequesturl(s, sUrl);
-			TRACE("Got a GOOD CONNECION %s %s\n", sUrl.c_str(), sApp.c_str());
+		//	TRACE("Got a GOOD CONNECION %s %s\n", sUrl.c_str(), sApp.c_str());
 			memset(&m_httphandleconnection[n], 0,
 					sizeof(m_httphandleconnection[n]));
 			this->m_httphandleconnection[n].nLastHandledTime =
@@ -1642,10 +1723,10 @@ int CPacketFilter::OnIPPacketFilter(const struct sniff_ip * p_IPBuffer,
 			m_httphandleconnection[n].bFinClient = false;
 			m_httphandleconnection[n].bMangled = false;
 
-			TRACE("Got Server response, start handle \n%s\n", s.c_str());
+//			TRACE("Got Server response, start handle \n%s\n", s.c_str());
 			if (!this->HTTPHandler(p_IPBuffer, p_nBufSize,
 					m_httphandleconnection[n])) {
-				TRACE("Bad first hand shake\n");
+			//	TRACE("Bad first hand shake\n");
 				break;
 			}
 			return NF_DROP;  //this connection already handled
@@ -1671,7 +1752,7 @@ int CPacketFilter::cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
 void CPacketFilter::threadBindQueueRun() {
 
-	TRACE("netfilter thread started\n");
+//	TRACE("netfilter thread started\n");
 
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
@@ -1682,28 +1763,36 @@ void CPacketFilter::threadBindQueueRun() {
 		//m_bIpTableExist = true;
 
 		for (;;) {
-			if ((rv = recv(m_fd, buf, sizeof(buf), 0)) >= 0) {
-				//		printf("pkt received\n");
-				nfq_handle_packet(m_h, buf, rv);
-				continue;
+
+			m_ExitEvent.Reset();
+			m_ExitEvent.SetFD(m_fd);
+
+			if (m_ExitEvent.WaitIO() && m_ExitEvent.IsIOON(m_fd)) {
+
+				if ((rv = recv(m_fd, buf, sizeof(buf), 0)) >= 0) {
+					//		printf("pkt received\n");
+					nfq_handle_packet(m_h, buf, rv);
+					continue;
+				}
+				/* if your application is too slow to digest the packets that
+				 * are sent from kernel-space, the socket buffer that we use
+				 * to enqueue packets may fill up returning ENOBUFS. Depending
+				 * on your application, this error may be ignored. Please, see
+				 * the doxygen documentation of this library on how to improve
+				 * this situation.
+				 */
+				if (rv < 0 && errno == ENOBUFS) {
+			//		TRACE("losing packets!\n");
+					continue;
+				}
 			}
-			/* if your application is too slow to digest the packets that
-			 * are sent from kernel-space, the socket buffer that we use
-			 * to enqueue packets may fill up returning ENOBUFS. Depending
-			 * on your application, this error may be ignored. Please, see
-			 * the doxygen documentation of this library on how to improve
-			 * this situation.
-			 */
-			if (rv < 0 && errno == ENOBUFS) {
-				TRACE("losing packets!\n");
-				continue;
-			}
+
 			//	TRACE("recv failed");
 			break;
 		}
 	} while (false);
 
-	TRACE("netfilter thread Finisheds\n");
+	//TRACE("netfilter thread Finisheds\n");
 
 }
 

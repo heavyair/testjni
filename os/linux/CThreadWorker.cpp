@@ -29,7 +29,9 @@ void CThreadWorker::StartThread( void *(* p_func) (void *),void* p_parent)
 void CThreadWorker::WaitThreadExit()
 {
 	if (m_ThreadHandle != 0)
+	{
 		 pthread_join(m_ThreadHandle, NULL);
+	}
 	m_ThreadHandle=0;
 
 }

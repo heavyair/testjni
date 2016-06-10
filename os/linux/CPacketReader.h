@@ -26,7 +26,7 @@ public:
 	     void StopSniff();
 	  //   bool IsWorking();
 
-
+	     CNetcutEvent m_EventStop;
 protected:
 /*
 
@@ -52,7 +52,7 @@ protected:
 
 	     CThreadWorker m_ThreadSniff;
 
-	     //CNetcutEvent m_EventStop;
+
 	     pcap_t * m_PcapHandle;
 	     //Sniffer *m_PSnifferPointer;
 	     char m_sErrbuf[PCAP_ERRBUF_SIZE];  //less stack memory apply/release  256 byte

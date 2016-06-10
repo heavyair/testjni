@@ -24,6 +24,10 @@ public:
 	int Read(char *p_sbuf,int p_nbufLen);
 	bool OpenUrl(const string & p_sUrl);
 	bool OpenUrl(bool p_bGet,const string & p_sUrl,const string & p_sPostContent);
+	std::string UrlEncode(std::string const & source);
+	std::string UrlDecode(const std::string& str);
+	unsigned char FromHex(unsigned char x);
+	unsigned char ToHex(unsigned char x);
 	std::string tail(std::string const& source, size_t const length);
 	std::vector<string> splitstring(string p_sString,string p_sToken);
 	void ParseHeader();

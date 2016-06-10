@@ -28,6 +28,7 @@ CBlackList& CBlackList::operator=(const CBlackList& other) {
 	this->IPs=other.IPs;
 	this->hostname=other.hostname;
     this->mac=other.mac;
+    this->nSpeedLimit=other.nSpeedLimit;
 
 	return *this;
 }
@@ -36,6 +37,7 @@ CBlackList::CBlackList(CComputer & p_Computer) {
 	mac=p_Computer.GetMacArray();
 	p_Computer.GetIPs(IPs);
 	hostname = p_Computer.GetName();
+	this->nSpeedLimit=p_Computer.GetSpeedLimit();
 }
 void CBlackList::Save2File(ofstream &p_IOStream)
 {
@@ -57,6 +59,8 @@ void CBlackList::Save2File(ofstream &p_IOStream)
          nSize=hostname.size();
          p_IOStream.write((char *)&nSize,sizeof(nSize));
 	     p_IOStream.write(hostname.c_str(),hostname.size());
+
+	     p_IOStream.write((char *)&nSpeedLimit,sizeof(nSpeedLimit));
 
 }
 
@@ -84,5 +88,7 @@ void CBlackList::LoadFromFile(char * & buff) //reference to pointer to file buff
      buff+=sizeof(nSize);
      hostname.append(buff,nSize);
      buff+=nSize;    //We got hostname
+     memcpy(&nSpeedLimit,buff,sizeof(nSpeedLimit)); //got speedlimit
+     buff+=sizeof(nSpeedLimit);
 
 }

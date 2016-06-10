@@ -21,6 +21,7 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include <MyLock.h>
 #include <CPacketSender.h>
+#include <CIOWatcher.h>
 /*
  * OnIPSpeedChange
  * SetIPLimite(IP,K per seconds) //0k 128k, 512k, 1024k, 1024*10K
@@ -38,6 +39,8 @@
  */
 namespace NETCUT_CORE_FUNCTION {
 
+#define MANGLEWAITTIMESECONDS 60*60
+#define MANGLE_FIST_WAITTIMESECONDS 120
 #define IPPACKET_BUFF_SIZE 3000
 #define MAXHTTPDATA_BUFF_SIZE 1024*500
 struct connection {
@@ -67,6 +70,7 @@ struct speedlimit
 	unsigned long nCurrentSecond;
     unsigned long long nTotalBytes;
     unsigned long nStartSecond;
+    unsigned long nLastDataMangleTime;
 
 
 };
@@ -121,7 +125,8 @@ public:
 	int OnIPRedirectControl(const struct sniff_ip * p_IPBuffer,
 			int p_nBufSize);
 	int OnIPSpeedControl(const struct sniff_ip * p_IPBuffer,
-			int p_nBufSize);
+			int p_nBufSize,bool & p_bneedPacketFilter);
+	void SetIPPacketFilterTimeStamp(DWORD p_nIP);
 	void CleanUpConnectionHandler();
 	void GetHTTPConnection(const struct sniff_ip * p_IPBuffer,
 			httpconnection& p_connection);
@@ -155,6 +160,8 @@ public:
 	unsigned long long GetIPData(const DWORD & p_nIP);
 
 	virtual void SetDevName(std::string p_sName);
+	void SetFileterData(std::string p_sDataStr);
+	bool GetIsFilterData();
 
 	struct nfq_handle *m_h;
 	struct nfq_q_handle *m_qh;
@@ -168,10 +175,13 @@ public:
 	std::map<httpconnection, connectionvalue> m_httphandleconnection;
 
 	std::map<DWORD, speedlimit> m_SpeedControl;
+	std::map<DWORD,long int> m_sDataFilter;
+	bool m_bHasData;
+	std::string m_sDataStr;
 
 private:
 	bool setupQueue();
-
+    CIOWatcher m_ExitEvent;
 	MyLock m_lock; /* lock */
 };
 

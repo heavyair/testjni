@@ -65,7 +65,7 @@ unsigned long _helper_GetMiTime() {
 	return mtime;
 }
 
-unsigned long _helper_GetTimeSeconds()
+long int _helper_GetTimeSeconds()
 {
 
 	struct timeval start;

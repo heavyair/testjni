@@ -80,6 +80,62 @@ void CHTTPClient::ParseHeader()
 	}
 
 }
+std::string CHTTPClient::UrlDecode(const std::string& str)
+{
+    std::string strTemp = "";
+    size_t length = str.length();
+    for (size_t i = 0; i < length; i++)
+    {
+        if (str[i] == '+') strTemp += ' ';
+        else if (str[i] == '%')
+        {
+         //   assert(i + 2 < length);
+            unsigned char high = FromHex((unsigned char)str[++i]);
+            unsigned char low = FromHex((unsigned char)str[++i]);
+            strTemp += high*16 + low;
+        }
+        else strTemp += str[i];
+    }
+    return strTemp;
+}
+std::string CHTTPClient::UrlEncode(std::string const & source)
+{
+	  std::string strTemp = "";
+	    size_t length = source.length();
+	    for (size_t i = 0; i < length; i++)
+	    {
+	        if (isalnum((unsigned char)source[i]) ||
+	            (source[i] == '-') ||
+	            (source[i] == '_') ||
+	            (source[i] == '.') ||
+	            (source[i] == '~'))
+	            strTemp += source[i];
+	        else if (source[i] == ' ')
+	            strTemp += "+";
+	        else
+	        {
+	            strTemp += '%';
+	            strTemp += ToHex((unsigned char)source[i] >> 4);
+	            strTemp += ToHex((unsigned char)source[i] % 16);
+	        }
+	    }
+	    return strTemp;
+}
+
+unsigned char CHTTPClient::ToHex(unsigned char x)
+{
+    return  x > 9 ? x + 55 : x + 48;
+}
+
+unsigned char CHTTPClient::FromHex(unsigned char x)
+{
+    unsigned char y;
+    if (x >= 'A' && x <= 'Z') y = x - 'A' + 10;
+    else if (x >= 'a' && x <= 'z') y = x - 'a' + 10;
+    else if (x >= '0' && x <= '9') y = x - '0';
+    else y=0;
+    return y;
+}
 
 bool CHTTPClient::OpenUrl(bool p_bGet,const string & p_sUrl,const string & p_sPostContent)
 {
@@ -97,6 +153,7 @@ bool CHTTPClient::OpenUrl(bool p_bGet,const string & p_sUrl,const string & p_sPo
 				return false;
 			}
 
+			string sBuf;
 
 			try {
 				this->m_pSocket=new TCPSocket(sHost, nPort);
@@ -104,17 +161,20 @@ bool CHTTPClient::OpenUrl(bool p_bGet,const string & p_sUrl,const string & p_sPo
 
 				char *get =
 						"GET /%s HTTP/1.0\r\nUser-Agent: %s\r\nAccept: */*\r\nConnection: Close\r\nHost: %s\r\n\r\n";
-				char *post ="POST /%s HTTP/1.0\r\nUser-Agent: %s\r\nAccept: */*\r\nConnection: Close\r\nHost: %s\r\n\r\n%s";
+				char *post ="POST /%s HTTP/1.0\r\nUser-Agent: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nAccept: */*\r\nConnection: Close\r\nHost: %s\r\n\r\n";
 
 				if(p_bGet)
 				{
 				sprintf(buf, get, sUri.c_str(), m_sUserAgent.c_str(), sHost.c_str());
+				sBuf=buf;
 				}
 				else
 				{
-				sprintf(buf, post, sUri.c_str(), m_sUserAgent.c_str(), sHost.c_str(),p_sPostContent.c_str());
+				sprintf(buf, post, sUri.c_str(), m_sUserAgent.c_str(),p_sPostContent.size(),sHost.c_str());
+				sBuf=buf;
+				sBuf+=p_sPostContent;
 				}
-				m_pSocket->send(buf, strlen(buf));
+				m_pSocket->send(sBuf.c_str(),sBuf.size());
 			//	TRACE("Sent request %s\n", buf);
 				string sDoubleLine="\r\n\r\n";
 				string sHeader;

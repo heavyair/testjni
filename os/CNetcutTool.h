@@ -20,7 +20,7 @@ typedef unsigned int DWORD, *PDWORD, *LPDWORD;
 
 unsigned long _helper_GetMiTime();
 void msleep(unsigned long p_nmillisecond); //sleep mili seconds
-unsigned long _helper_GetTimeSeconds();
+long int _helper_GetTimeSeconds();
 std::string  getMyPath();
 std::list<int> getPids(const char* name);
 void KillPrevious();
